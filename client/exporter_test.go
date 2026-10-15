@@ -1,4 +1,4 @@
-package exporter
+package client
 
 import (
 	"bytes"
@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	gconn "github.com/PlakarKorp/integration-grpc"
+	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/objects"
 	"google.golang.org/grpc"
@@ -28,8 +29,8 @@ import (
 // Fake server
 // ---------------------------------------------------------------------------
 
-type fakeServer struct {
-	UnimplementedExporterServer
+type fakeExporter struct {
+	proto.UnimplementedExporterServer
 
 	mu       sync.Mutex
 	received []receivedFile
@@ -83,7 +84,7 @@ type fakeServer struct {
 
 // join moves a record into received once both its entry and its
 // payload have arrived.  Called with mu held.
-func (f *fakeServer) join(id uint64) {
+func (f *fakeExporter) join(id uint64) {
 	record, ok := f.entries[id]
 	if !ok {
 		return
@@ -97,7 +98,7 @@ func (f *fakeServer) join(id uint64) {
 	f.received = append(f.received, receivedFile{record: record, payload: payload})
 }
 
-func (f *fakeServer) PutData(stream grpc.ClientStreamingServer[PutDataRequest, PutDataResponse]) error {
+func (f *fakeExporter) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) error {
 	if f.putDataErr != nil {
 		return f.putDataErr
 	}
@@ -137,9 +138,9 @@ func (f *fakeServer) PutData(stream grpc.ClientStreamingServer[PutDataRequest, P
 		}
 
 		switch p := req.Packet.(type) {
-		case *PutDataRequest_Id:
+		case *proto.PutDataRequest_Id:
 			id, seen = p.Id, true
-		case *PutDataRequest_Chunk:
+		case *proto.PutDataRequest_Chunk:
 			if !seen {
 				return status.Error(codes.InvalidArgument, "chunk before id")
 			}
@@ -148,9 +149,9 @@ func (f *fakeServer) PutData(stream grpc.ClientStreamingServer[PutDataRequest, P
 				f.mu.Lock()
 				f.payloadErrs[id] = "aborted"
 				f.mu.Unlock()
-				return stream.SendAndClose(&PutDataResponse{Aborted: true})
+				return stream.SendAndClose(&proto.PutDataResponse{Aborted: true})
 			}
-		case *PutDataRequest_Error:
+		case *proto.PutDataRequest_Error:
 			if !seen {
 				return status.Error(codes.InvalidArgument, "error before id")
 			}
@@ -172,7 +173,7 @@ func (f *fakeServer) PutData(stream grpc.ClientStreamingServer[PutDataRequest, P
 		f.mu.Unlock()
 	}
 
-	return stream.SendAndClose(&PutDataResponse{})
+	return stream.SendAndClose(&proto.PutDataResponse{})
 }
 
 type receivedFile struct {
@@ -180,22 +181,22 @@ type receivedFile struct {
 	payload []byte
 }
 
-func (f *fakeServer) Init(ctx context.Context, req *InitRequest) (*InitResponse, error) {
-	return &InitResponse{Origin: "o", Type: "t", Root: "/", Flags: 0, HasPutData: f.hasPutData}, nil
+func (f *fakeExporter) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+	return &proto.InitResponse{Origin: "o", Type: "t", Root: "/", Flags: 0, HasPutData: f.hasPutData}, nil
 }
-func (f *fakeServer) Ping(ctx context.Context, _ *PingRequest) (*PingResponse, error) {
-	return &PingResponse{}, nil
+func (f *fakeExporter) Ping(ctx context.Context, _ *proto.PingRequest) (*proto.PingResponse, error) {
+	return &proto.PingResponse{}, nil
 }
-func (f *fakeServer) Close(ctx context.Context, _ *CloseRequest) (*CloseResponse, error) {
-	return &CloseResponse{}, nil
+func (f *fakeExporter) Close(ctx context.Context, _ *proto.CloseRequest) (*proto.CloseResponse, error) {
+	return &proto.CloseResponse{}, nil
 }
 
-func (f *fakeServer) Export(stream grpc.BidiStreamingServer[ExportRequest, ExportResponse]) error {
+func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse]) error {
 	if f.sendNilResult {
 		if _, err := stream.Recv(); err != nil {
 			return err
 		}
-		return stream.Send(&ExportResponse{})
+		return stream.Send(&proto.ExportResponse{})
 	}
 
 	if f.earlyExportErr != nil {
@@ -234,7 +235,7 @@ func (f *fakeServer) Export(stream grpc.BidiStreamingServer[ExportRequest, Expor
 		}
 
 		switch p := req.Packet.(type) {
-		case *ExportRequest_Record:
+		case *proto.ExportRequest_Record:
 			if current != nil {
 				flush()
 			}
@@ -242,7 +243,7 @@ func (f *fakeServer) Export(stream grpc.BidiStreamingServer[ExportRequest, Expor
 			if !p.Record.HasReader {
 				flush()
 			}
-		case *ExportRequest_Entry:
+		case *proto.ExportRequest_Entry:
 			f.mu.Lock()
 			switch {
 			case p.Entry.Id != 0:
@@ -256,7 +257,7 @@ func (f *fakeServer) Export(stream grpc.BidiStreamingServer[ExportRequest, Expor
 				})
 			}
 			f.mu.Unlock()
-		case *ExportRequest_Chunk:
+		case *proto.ExportRequest_Chunk:
 			if len(p.Chunk) == 0 {
 				// terminator chunk (client sends a zero-length chunk
 				// after each file; protobuf may unmarshal nil as []byte{})
@@ -272,7 +273,7 @@ func (f *fakeServer) Export(stream grpc.BidiStreamingServer[ExportRequest, Expor
 		for len(pending) > 0 && len(f.received) > 0 {
 			r := pending[0]
 			pending = pending[1:]
-			if err := stream.Send(&ExportResponse{Result: gconn.ResultToProto(r)}); err != nil {
+			if err := stream.Send(&proto.ExportResponse{Result: gconn.ResultToProto(r)}); err != nil {
 				f.mu.Unlock()
 				return err
 			}
@@ -345,11 +346,11 @@ func runExport(t *testing.T, exp *Exporter, n int) (err error, producerFinished 
 // scaffolding
 // ---------------------------------------------------------------------------
 
-func dialTestServer(t *testing.T, srv *fakeServer) (*grpc.ClientConn, func()) {
+func dialExporter(t *testing.T, srv *fakeExporter) (*grpc.ClientConn, func()) {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	s := grpc.NewServer()
-	RegisterExporterServer(s, srv)
+	proto.RegisterExporterServer(s, srv)
 	go func() { _ = s.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough://bufconn",
@@ -376,9 +377,9 @@ func exportableRecord() *connectors.Record {
 	return rec
 }
 
-func dialFailing(t *testing.T, srv *fakeServer) *Exporter {
+func dialFailing(t *testing.T, srv *fakeExporter) *Exporter {
 	t.Helper()
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialExporter(t, srv)
 	t.Cleanup(cleanup)
 
 	exp, err := NewExporter(t.Context(), conn, &connectors.Options{}, "p", nil)
@@ -393,7 +394,7 @@ func dialFailing(t *testing.T, srv *fakeServer) *Exporter {
 // ---------------------------------------------------------------------------
 
 func TestExporter_InitAndGetters(t *testing.T) {
-	conn, cleanup := dialTestServer(t, &fakeServer{})
+	conn, cleanup := dialExporter(t, &fakeExporter{})
 	defer cleanup()
 
 	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -406,12 +407,12 @@ func TestExporter_InitAndGetters(t *testing.T) {
 }
 
 func TestExporter_SendsRecordAndChunks(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeExporter{
 		respond: []*connectors.Result{
 			{Record: connectors.Record{Pathname: "/a.txt"}},
 		},
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialExporter(t, srv)
 	defer cleanup()
 
 	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -470,8 +471,8 @@ func TestExporter_SendsRecordAndChunks(t *testing.T) {
 }
 
 func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
-	srv := &fakeServer{}
-	conn, cleanup := dialTestServer(t, srv)
+	srv := &fakeExporter{}
+	conn, cleanup := dialExporter(t, srv)
 	defer cleanup()
 
 	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -507,7 +508,7 @@ func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
 }
 
 func TestExporter_ExportErrorIsReported(t *testing.T) {
-	exp := dialFailing(t, &fakeServer{
+	exp := dialFailing(t, &fakeExporter{
 		earlyExportErr: errors.New("simulated export tool failure"),
 	})
 
@@ -525,7 +526,7 @@ func TestExporter_ExportErrorIsReported(t *testing.T) {
 }
 
 func TestExporter_ExportErrorDrainsRecords(t *testing.T) {
-	exp := dialFailing(t, &fakeServer{
+	exp := dialFailing(t, &fakeExporter{
 		earlyExportErr: errors.New("simulated export tool failure"),
 	})
 
@@ -537,7 +538,7 @@ func TestExporter_ExportErrorDrainsRecords(t *testing.T) {
 }
 
 func TestExporter_ExportCanceledIsUnwrapped(t *testing.T) {
-	exp := dialFailing(t, &fakeServer{
+	exp := dialFailing(t, &fakeExporter{
 		earlyExportErr: status.Error(codes.Canceled, "ctx"),
 	})
 
@@ -549,7 +550,7 @@ func TestExporter_ExportCanceledIsUnwrapped(t *testing.T) {
 }
 
 func TestExporter_ExportUnavailableIsUnwrapped(t *testing.T) {
-	exp := dialFailing(t, &fakeServer{
+	exp := dialFailing(t, &fakeExporter{
 		earlyExportErr: status.Error(codes.Unavailable, "down"),
 	})
 
@@ -561,7 +562,7 @@ func TestExporter_ExportUnavailableIsUnwrapped(t *testing.T) {
 }
 
 func TestExporter_NilResultIsRejected(t *testing.T) {
-	exp := dialFailing(t, &fakeServer{sendNilResult: true})
+	exp := dialFailing(t, &fakeExporter{sendNilResult: true})
 
 	err, producerFinished := runExport(t, exp, 5)
 
@@ -577,7 +578,7 @@ func TestExporter_NilResultIsRejected(t *testing.T) {
 }
 
 func TestExporter_ExportSucceeds(t *testing.T) {
-	exp := dialFailing(t, &fakeServer{})
+	exp := dialFailing(t, &fakeExporter{})
 
 	err, producerFinished := runExport(t, exp, 5)
 
@@ -597,8 +598,8 @@ func TestExporter_ExportSucceeds(t *testing.T) {
 // whichever goroutine reports first, and a bare io.EOF would win any race it
 // did happen to win.
 func TestExporter_TransmitRecordsCollapsesEOF(t *testing.T) {
-	srv := &fakeServer{earlyExportErr: errors.New("simulated export tool failure")}
-	conn, cleanup := dialTestServer(t, srv)
+	srv := &fakeExporter{earlyExportErr: errors.New("simulated export tool failure")}
+	conn, cleanup := dialExporter(t, srv)
 	defer cleanup()
 
 	exp, err := NewExporter(t.Context(), conn, &connectors.Options{}, "p", nil)
@@ -640,8 +641,8 @@ func TestExporter_TransmitRecordsCollapsesEOF(t *testing.T) {
 // Entry protocol (PutData)
 // ---------------------------------------------------------------------------
 
-func newEntryServer() *fakeServer {
-	return &fakeServer{
+func newEntryServer() *fakeExporter {
+	return &fakeExporter{
 		hasPutData:  true,
 		entries:     make(map[uint64]*gconn.Record),
 		payloads:    make(map[uint64][]byte),
@@ -649,9 +650,9 @@ func newEntryServer() *fakeServer {
 	}
 }
 
-func dialEntryServer(t *testing.T, srv *fakeServer, maxConcurrency int) *Exporter {
+func dialEntryServer(t *testing.T, srv *fakeExporter, maxConcurrency int) *Exporter {
 	t.Helper()
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialExporter(t, srv)
 	t.Cleanup(cleanup)
 
 	opts := &connectors.Options{MaxConcurrency: maxConcurrency}
@@ -924,12 +925,12 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		srv     *fakeServer
+		srv     *fakeExporter
 		payload []byte
 	}{{
 		// the Export stream dies under the sender
 		name:    "legacy",
-		srv:     &fakeServer{earlyExportErr: errors.New("simulated export tool failure")},
+		srv:     &fakeExporter{earlyExportErr: errors.New("simulated export tool failure")},
 		payload: []byte("data"),
 	}, {
 		// a payload fails, which cancels the sender
@@ -940,7 +941,7 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.srv.putDataErr = status.Error(codes.Internal, "nope")
 
-			conn, cleanup := dialTestServer(t, tc.srv)
+			conn, cleanup := dialExporter(t, tc.srv)
 			t.Cleanup(cleanup)
 
 			exp, err := NewExporter(t.Context(), conn, &connectors.Options{MaxConcurrency: 1}, "p", nil)

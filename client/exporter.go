@@ -1,4 +1,4 @@
-package exporter
+package client
 
 import (
 	"context"
@@ -9,17 +9,16 @@ import (
 	"sync/atomic"
 
 	gconn "github.com/PlakarKorp/integration-grpc"
+	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/exporter"
 	"github.com/PlakarKorp/kloset/location"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Exporter struct {
-	client ExporterClient
+	client proto.ExporterClient
 
 	cookie string
 	root   string
@@ -75,39 +74,19 @@ func drain(records <-chan *connectors.Record) {
 	}
 }
 
-func unwrap(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	status, ok := status.FromError(err)
-	if !ok {
-		return err
-	}
-
-	switch status.Code() {
-	case codes.Canceled:
-		return context.Canceled
-	case codes.Unavailable:
-		return fmt.Errorf("I/O error communicating with the integration (%s)", status.Message())
-	default:
-		return fmt.Errorf("%s", status.Message())
-	}
-}
-
-func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *connectors.Options, proto string, config map[string]string) (exporter.Exporter, error) {
+func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *connectors.Options, p string, config map[string]string) (exporter.Exporter, error) {
 	maxConcurrency := opts.MaxConcurrency
 	if maxConcurrency < 1 {
 		maxConcurrency = 1
 	}
 
 	exporter := &Exporter{
-		client:         NewExporterClient(client),
+		client:         proto.NewExporterClient(client),
 		maxConcurrency: maxConcurrency,
 	}
 
-	res, err := exporter.client.Init(ctx, &InitRequest{
-		Options: &Options{
+	res, err := exporter.client.Init(ctx, &proto.InitRequest{
+		Options: &proto.Options{
 			Maxconcurrency: int64(opts.MaxConcurrency),
 			Hostname:       opts.Hostname,
 			Os:             opts.OperatingSystem,
@@ -116,7 +95,7 @@ func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *con
 			Excludes:       opts.Excludes,
 			Noxattr:        opts.NoXattr,
 		},
-		Proto:  proto,
+		Proto:  p,
 		Config: config,
 	})
 	if err != nil {
@@ -138,22 +117,22 @@ func (g *Exporter) Root() string          { return g.root }
 func (g *Exporter) Flags() location.Flags { return g.flags }
 
 func (g *Exporter) Ping(ctx context.Context) error {
-	_, err := g.client.Ping(ctx, &PingRequest{})
+	_, err := g.client.Ping(ctx, &proto.PingRequest{})
 	return unwrap(err)
 }
 
 func (g *Exporter) Close(ctx context.Context) error {
-	_, err := g.client.Close(ctx, &CloseRequest{})
+	_, err := g.client.Close(ctx, &proto.CloseRequest{})
 	return unwrap(err)
 }
 
-func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[ExportRequest, ExportResponse], records <-chan *connectors.Record) error {
+func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *connectors.Record) error {
 	defer drain(records)
 	defer stream.CloseSend()
 
 	for record := range records {
-		hdr := ExportRequest{
-			Packet: &ExportRequest_Record{
+		hdr := proto.ExportRequest{
+			Packet: &proto.ExportRequest_Record{
 				Record: gconn.RecordToProto(record),
 			},
 		}
@@ -172,8 +151,8 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[ExportRequest
 		}
 
 		sendData := func(buf []byte) error {
-			return stream.Send(&ExportRequest{
-				Packet: &ExportRequest_Chunk{
+			return stream.Send(&proto.ExportRequest{
+				Packet: &proto.ExportRequest_Chunk{
 					Chunk: buf,
 				},
 			})
@@ -214,7 +193,7 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[ExportRequest
 // transmitEntries sends the records in order over the Export stream,
 // uploading the payloads that don't fit inline over maxConcurrency
 // PutData streams.
-func (g *Exporter) transmitEntries(ctx context.Context, stream grpc.BidiStreamingClient[ExportRequest, ExportResponse], records <-chan *connectors.Record) error {
+func (g *Exporter) transmitEntries(ctx context.Context, stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *connectors.Record) error {
 	defer drain(records)
 
 	// whoever fails first cancels the rest and is the one
@@ -256,10 +235,10 @@ func (g *Exporter) transmitEntries(ctx context.Context, stream grpc.BidiStreamin
 	return context.Cause(ctx)
 }
 
-func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingClient[ExportRequest, ExportResponse], records <-chan *connectors.Record, jobs chan<- payloadJob) error {
-	send := func(entry *ExportEntry) error {
-		return unwrap(ignoreEOF(stream.Send(&ExportRequest{
-			Packet: &ExportRequest_Entry{Entry: entry},
+func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *connectors.Record, jobs chan<- payloadJob) error {
+	send := func(entry *proto.ExportEntry) error {
+		return unwrap(ignoreEOF(stream.Send(&proto.ExportRequest{
+			Packet: &proto.ExportRequest_Entry{Entry: entry},
 		})))
 	}
 
@@ -269,7 +248,7 @@ func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingCli
 			return err
 		}
 
-		entry := &ExportEntry{Record: gconn.RecordToProto(record)}
+		entry := &proto.ExportEntry{Record: gconn.RecordToProto(record)}
 		if !entry.Record.HasReader {
 			if err := send(entry); err != nil {
 				return err
@@ -340,8 +319,16 @@ func (g *Exporter) putData(ctx context.Context, job payloadJob) error {
 		return unwrap(err)
 	}
 
-	send := func(packet isPutDataRequest_Packet) error {
-		return stream.Send(&PutDataRequest{Packet: packet})
+	chunk := func(buf []byte) error {
+		return stream.Send(&proto.PutDataRequest{
+			Packet: &proto.PutDataRequest_Chunk{Chunk: buf},
+		})
+	}
+
+	fail := func(err error) error {
+		return stream.Send(&proto.PutDataRequest{
+			Packet: &proto.PutDataRequest_Error{Error: err.Error()},
+		})
 	}
 
 	finish := func(reason error) error {
@@ -356,16 +343,18 @@ func (g *Exporter) putData(ctx context.Context, job payloadJob) error {
 		return nil
 	}
 
-	if err := send(&PutDataRequest_Id{Id: job.id}); err != nil {
+	if err := stream.Send(&proto.PutDataRequest{
+		Packet: &proto.PutDataRequest_Id{Id: job.id},
+	}); err != nil {
 		return finish(err)
 	}
 
 	if job.err != nil {
-		return finish(send(&PutDataRequest_Error{Error: job.err.Error()}))
+		return finish(fail(job.err))
 	}
 
 	if len(job.buf) != 0 {
-		if err := send(&PutDataRequest_Chunk{Chunk: job.buf}); err != nil {
+		if err := chunk(job.buf); err != nil {
 			return finish(err)
 		}
 	}
@@ -374,7 +363,7 @@ func (g *Exporter) putData(ctx context.Context, job payloadJob) error {
 	for {
 		n, err := job.rd.Read(buf)
 		if n != 0 {
-			if err := send(&PutDataRequest_Chunk{Chunk: buf[:n]}); err != nil {
+			if err := chunk(buf[:n]); err != nil {
 				return finish(err)
 			}
 		}
@@ -382,7 +371,7 @@ func (g *Exporter) putData(ctx context.Context, job payloadJob) error {
 			break
 		}
 		if err != nil {
-			if err := send(&PutDataRequest_Error{Error: err.Error()}); err != nil {
+			if err := fail(err); err != nil {
 				return finish(err)
 			}
 			break
@@ -392,7 +381,7 @@ func (g *Exporter) putData(ctx context.Context, job payloadJob) error {
 	return finish(nil)
 }
 
-func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[ExportRequest, ExportResponse], results chan<- *connectors.Result) error {
+func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], results chan<- *connectors.Result) error {
 	defer close(results)
 
 	for {
