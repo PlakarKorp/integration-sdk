@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	proto "github.com/PlakarKorp/connector-sdk/proto/importer"
 	gconn "github.com/PlakarKorp/integration-grpc"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/importer"
@@ -18,7 +19,7 @@ import (
 )
 
 type Importer struct {
-	client ImporterClient
+	client proto.ImporterClient
 
 	cookie string
 	typ    string
@@ -47,13 +48,13 @@ func unwrap(err error) error {
 	}
 }
 
-func NewImporter(ctx context.Context, client grpc.ClientConnInterface, opts *connectors.Options, proto string, config map[string]string) (importer.Importer, error) {
+func NewImporter(ctx context.Context, client grpc.ClientConnInterface, opts *connectors.Options, p string, config map[string]string) (importer.Importer, error) {
 	importer := &Importer{
-		client: NewImporterClient(client),
+		client: proto.NewImporterClient(client),
 	}
 
-	initReq := InitRequest{
-		Options: &Options{
+	initReq := proto.InitRequest{
+		Options: &proto.Options{
 			Hostname:       opts.Hostname,
 			Os:             opts.OperatingSystem,
 			Arch:           opts.Architecture,
@@ -62,7 +63,7 @@ func NewImporter(ctx context.Context, client grpc.ClientConnInterface, opts *con
 			Excludes:       opts.Excludes,
 			Noxattr:        opts.NoXattr,
 		},
-		Proto:  proto,
+		Proto:  p,
 		Config: config,
 	}
 
@@ -89,26 +90,26 @@ func (g *Importer) Root() string          { return g.root }
 func (g *Importer) Flags() location.Flags { return g.flags }
 
 func (g *Importer) Ping(ctx context.Context) error {
-	_, err := g.client.Ping(ctx, &PingRequest{})
+	_, err := g.client.Ping(ctx, &proto.PingRequest{})
 	return unwrap(err)
 }
 
 func (g *Importer) Close(ctx context.Context) error {
-	_, err := g.client.Close(ctx, &CloseRequest{})
+	_, err := g.client.Close(ctx, &proto.CloseRequest{})
 	return unwrap(err)
 }
 
 type streamReader struct {
 	ctx    context.Context
 	cancel func()
-	stream grpc.ServerStreamingClient[OpenResponse]
+	stream grpc.ServerStreamingClient[proto.OpenResponse]
 	buf    bytes.Buffer
 }
 
 func (g *Importer) open(parentctx context.Context, record *connectors.Record) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancel(parentctx)
 
-	stream, err := g.client.Open(ctx, &OpenRequest{
+	stream, err := g.client.Open(ctx, &proto.OpenRequest{
 		Record: &gconn.Record{
 			Pathname:  record.Pathname,
 			IsXattr:   record.IsXattr,
@@ -171,7 +172,7 @@ func (s *streamReader) Close() error {
 	}
 }
 
-func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingClient[ImportRequest, ImportResponse], records chan<- *connectors.Record) error {
+func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], records chan<- *connectors.Record) error {
 	defer close(records)
 
 	for {
@@ -204,9 +205,9 @@ func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreaming
 	}
 }
 
-func (g *Importer) sendResults(stream grpc.BidiStreamingClient[ImportRequest, ImportResponse], results <-chan *connectors.Result) error {
+func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], results <-chan *connectors.Result) error {
 	for result := range results {
-		hdr := ImportRequest{
+		hdr := proto.ImportRequest{
 			Result: gconn.ResultToProto(result),
 		}
 		if err := stream.Send(&hdr); err != nil {
