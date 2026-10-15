@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	proto "github.com/PlakarKorp/connector-sdk/proto/importer"
 	gconn "github.com/PlakarKorp/integration-grpc"
+	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/importer"
 	"github.com/PlakarKorp/kloset/location"

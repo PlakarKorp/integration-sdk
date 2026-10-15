@@ -1,4 +1,4 @@
-PROTO_OPTS = paths=source_relative,M${PROTO}.proto=github.com/PlakarKorp/connector-sdk/proto/${PKGNAME}
+PROTO_OPTS = paths=source_relative,M${PROTO}.proto=github.com/PlakarKorp/integration-sdk/proto/${PKGNAME}
 
 ${PROTO}.pb.go ${PROTO}_grpc.pb.go: ${PROTO}.proto
 	protoc --proto_path=. \

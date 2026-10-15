@@ -1,4 +1,4 @@
-package integration_grpc
+package proto
 
 import (
 	"errors"
@@ -31,9 +31,9 @@ func sampleFileInfo() objects.FileInfo {
 
 func TestRecordRoundTrip_Regular(t *testing.T) {
 	rec := &connectors.Record{
-		Pathname: "/etc/hello.txt",
-		FileInfo: sampleFileInfo(),
-		Target:   "",
+		Pathname:           "/etc/hello.txt",
+		FileInfo:           sampleFileInfo(),
+		Target:             "",
 		ExtendedAttributes: []string{"user.foo", "user.bar"},
 		FileAttributes:     0xdead,
 		Reader:             io.NopCloser(strings.NewReader("xx")),

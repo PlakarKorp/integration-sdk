@@ -1,4 +1,4 @@
-package integration_grpc
+package proto
 
 import (
 	"io"
