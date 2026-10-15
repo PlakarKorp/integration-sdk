@@ -8,8 +8,8 @@ import (
 	"io"
 	"net"
 
-	gconn "github.com/PlakarKorp/integration-grpc"
-	gexporter "github.com/PlakarKorp/integration-grpc/exporter"
+	conn "github.com/PlakarKorp/integration-sdk/proto"
+	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/exporter"
 	"github.com/PlakarKorp/kloset/location"
@@ -27,14 +27,14 @@ type exporterPluginServer struct {
 	// PutData streams carrying their payloads.
 	inflight payloads
 
-	gexporter.UnimplementedExporterServer
+	proto.UnimplementedExporterServer
 }
 
 var (
 	ErrExporterClosed = errors.New("the exporter is closed")
 )
 
-func (plugin *exporterPluginServer) Init(ctx context.Context, req *gexporter.InitRequest) (*gexporter.InitResponse, error) {
+func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
 	opts := connectors.Options{
 		MaxConcurrency:  int(req.Options.Maxconcurrency),
 		Hostname:        req.Options.Hostname,
@@ -52,7 +52,7 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *gexporter.Ini
 	plugin.maxConcurrency = int(req.Options.Maxconcurrency)
 	plugin.flags = exp.Flags()
 
-	return &gexporter.InitResponse{
+	return &proto.InitResponse{
 		Origin:     exp.Origin(),
 		Type:       exp.Type(),
 		Root:       exp.Root(),
@@ -61,23 +61,23 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *gexporter.Ini
 	}, nil
 }
 
-func (plugin *exporterPluginServer) Ping(ctx context.Context, req *gexporter.PingRequest) (*gexporter.PingResponse, error) {
+func (plugin *exporterPluginServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
 	err := plugin.exporter.Ping(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &gexporter.PingResponse{}, nil
+	return &proto.PingResponse{}, nil
 }
 
 type streamReader struct {
 	end    chan struct{}
 	eof    bool
-	stream grpc.BidiStreamingServer[gexporter.ExportRequest, gexporter.ExportResponse]
+	stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse]
 	buf    bytes.Buffer
 }
 
-func open(stream grpc.BidiStreamingServer[gexporter.ExportRequest, gexporter.ExportResponse], end chan struct{}) io.ReadCloser {
+func open(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], end chan struct{}) io.ReadCloser {
 	return &streamReader{
 		stream: stream,
 		end:    end,
@@ -138,7 +138,7 @@ func (s *streamReader) Close() error {
 	return nil
 }
 
-func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServer[gexporter.ExportRequest, gexporter.ExportResponse], records chan<- *connectors.Record) error {
+func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan<- *connectors.Record) error {
 	defer close(records)
 
 	for {
@@ -156,9 +156,9 @@ func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServ
 		)
 
 		switch p := res.Packet.(type) {
-		case *gexporter.ExportRequest_Record:
+		case *proto.ExportRequest_Record:
 			record, end, err = plugin.receiveRecord(stream, p.Record)
-		case *gexporter.ExportRequest_Entry:
+		case *proto.ExportRequest_Entry:
 			record, err = plugin.receiveEntry(p.Entry)
 		default:
 			err = fmt.Errorf("bad type; expected a record, got %t", res.Packet)
@@ -180,8 +180,8 @@ func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServ
 
 // receiveRecord handles the legacy protocol, where the payload follows
 // the record on the Export stream.
-func (plugin *exporterPluginServer) receiveRecord(stream grpc.BidiStreamingServer[gexporter.ExportRequest, gexporter.ExportResponse], r *gconn.Record) (*connectors.Record, chan struct{}, error) {
-	record, err := gconn.RecordFromProto(r)
+func (plugin *exporterPluginServer) receiveRecord(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], r *conn.Record) (*connectors.Record, chan struct{}, error) {
+	record, err := conn.RecordFromProto(r)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -198,12 +198,12 @@ func (plugin *exporterPluginServer) receiveRecord(stream grpc.BidiStreamingServe
 
 // receiveEntry handles the entry protocol, where the payload is either
 // inline or on a PutData stream of its own.
-func (plugin *exporterPluginServer) receiveEntry(entry *gexporter.ExportEntry) (*connectors.Record, error) {
+func (plugin *exporterPluginServer) receiveEntry(entry *proto.ExportEntry) (*connectors.Record, error) {
 	if entry.Record == nil {
 		return nil, fmt.Errorf("entry without a record")
 	}
 
-	record, err := gconn.RecordFromProto(entry.Record)
+	record, err := conn.RecordFromProto(entry.Record)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func (plugin *exporterPluginServer) receiveEntry(entry *gexporter.ExportEntry) (
 
 // PutData receives the payload of one record, which the Export stream
 // named with the same id.  Either stream can get here first.
-func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[gexporter.PutDataRequest, gexporter.PutDataResponse]) error {
+func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) error {
 	var wr *io.PipeWriter
 
 	for {
@@ -244,7 +244,7 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[ge
 		}
 
 		switch p := req.Packet.(type) {
-		case *gexporter.PutDataRequest_Id:
+		case *proto.PutDataRequest_Id:
 			if wr != nil {
 				return fmt.Errorf("payload %d: id sent twice", p.Id)
 			}
@@ -252,7 +252,7 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[ge
 				return err
 			}
 
-		case *gexporter.PutDataRequest_Chunk:
+		case *proto.PutDataRequest_Chunk:
 			if wr == nil {
 				return fmt.Errorf("payload data before its id")
 			}
@@ -261,12 +261,12 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[ge
 				// say so rather than let the client take
 				// it for a broken stream.
 				if errors.Is(err, io.ErrClosedPipe) {
-					return stream.SendAndClose(&gexporter.PutDataResponse{Aborted: true})
+					return stream.SendAndClose(&proto.PutDataResponse{Aborted: true})
 				}
 				return err
 			}
 
-		case *gexporter.PutDataRequest_Error:
+		case *proto.PutDataRequest_Error:
 			if wr == nil {
 				return fmt.Errorf("payload error before its id")
 			}
@@ -284,13 +284,13 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[ge
 	}
 	wr.Close()
 
-	return stream.SendAndClose(&gexporter.PutDataResponse{})
+	return stream.SendAndClose(&proto.PutDataResponse{})
 }
 
-func (plugin *exporterPluginServer) transmitResults(stream grpc.BidiStreamingServer[gexporter.ExportRequest, gexporter.ExportResponse], results <-chan *connectors.Result) error {
+func (plugin *exporterPluginServer) transmitResults(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], results <-chan *connectors.Result) error {
 	for result := range results {
-		hdr := gexporter.ExportResponse{
-			Result: gconn.ResultToProto(result),
+		hdr := proto.ExportResponse{
+			Result: conn.ResultToProto(result),
 		}
 		if err := stream.Send(&hdr); err != nil {
 			return err
@@ -300,7 +300,7 @@ func (plugin *exporterPluginServer) transmitResults(stream grpc.BidiStreamingSer
 	return nil
 }
 
-func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[gexporter.ExportRequest, gexporter.ExportResponse]) error {
+func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse]) error {
 	var (
 		size    = plugin.maxConcurrency
 		records = make(chan *connectors.Record, size)
@@ -326,7 +326,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[gexpo
 	return wg.Wait()
 }
 
-func (plugin *exporterPluginServer) Close(ctx context.Context, req *gexporter.CloseRequest) (*gexporter.CloseResponse, error) {
+func (plugin *exporterPluginServer) Close(ctx context.Context, req *proto.CloseRequest) (*proto.CloseResponse, error) {
 	// we are done for good: release the payloads still waiting,
 	// before the exporter gets a chance to wait on one of them.
 	plugin.inflight.fail(ErrExporterClosed)
@@ -336,7 +336,7 @@ func (plugin *exporterPluginServer) Close(ctx context.Context, req *gexporter.Cl
 		return nil, err
 	}
 
-	return &gexporter.CloseResponse{}, nil
+	return &proto.CloseResponse{}, nil
 }
 
 // RunExporter launches the gRPC server for an exporter plugin.
@@ -356,7 +356,7 @@ func RunExporterOn(ctx context.Context, constructor exporter.ExporterFn, listene
 	server := grpc.NewServer()
 
 	plugin := &exporterPluginServer{constructor: constructor}
-	gexporter.RegisterExporterServer(server, plugin)
+	proto.RegisterExporterServer(server, plugin)
 
 	done := make(chan struct{})
 	defer close(done)

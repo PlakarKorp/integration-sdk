@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	gconn "github.com/PlakarKorp/integration-grpc"
-	gexporter "github.com/PlakarKorp/integration-grpc/exporter"
+	conn "github.com/PlakarKorp/integration-sdk/proto"
+	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/exporter"
 	"github.com/PlakarKorp/kloset/location"
@@ -104,12 +104,12 @@ func (f *fakeExporter) records() []gotRecord {
 // scaffolding
 // ---------------------------------------------------------------------------
 
-func dialPlugin(t *testing.T, exp exporter.Exporter) gexporter.ExporterClient {
+func dialPlugin(t *testing.T, exp exporter.Exporter) proto.ExporterClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
-	gexporter.RegisterExporterServer(srv, &exporterPluginServer{
+	proto.RegisterExporterServer(srv, &exporterPluginServer{
 		constructor: func(context.Context, *connectors.Options, string, map[string]string) (exporter.Exporter, error) {
 			return exp, nil
 		},
@@ -121,7 +121,7 @@ func dialPlugin(t *testing.T, exp exporter.Exporter) gexporter.ExporterClient {
 }
 
 // dialOn connects to a plugin already listening on lis and inits it.
-func dialOn(t *testing.T, lis *bufconn.Listener) gexporter.ExporterClient {
+func dialOn(t *testing.T, lis *bufconn.Listener) proto.ExporterClient {
 	t.Helper()
 
 	conn, err := grpc.NewClient("passthrough://bufconn",
@@ -135,9 +135,9 @@ func dialOn(t *testing.T, lis *bufconn.Listener) gexporter.ExporterClient {
 	}
 	t.Cleanup(func() { conn.Close() })
 
-	client := gexporter.NewExporterClient(conn)
-	if _, err := client.Init(t.Context(), &gexporter.InitRequest{
-		Options: &gexporter.Options{Maxconcurrency: 4},
+	client := proto.NewExporterClient(conn)
+	if _, err := client.Init(t.Context(), &proto.InitRequest{
+		Options: &proto.Options{Maxconcurrency: 4},
 		Proto:   "p",
 	}); err != nil {
 		t.Fatalf("Init: %v", err)
@@ -146,8 +146,8 @@ func dialOn(t *testing.T, lis *bufconn.Listener) gexporter.ExporterClient {
 	return client
 }
 
-func recordOf(pathname string, size int64) *gconn.Record {
-	return gconn.RecordToProto(&connectors.Record{
+func recordOf(pathname string, size int64) *conn.Record {
+	return conn.RecordToProto(&connectors.Record{
 		Pathname: pathname,
 		FileInfo: objects.FileInfo{Lname: pathname, Lsize: size, Lmode: 0o644},
 		// RecordToProto only looks at whether this is set
@@ -155,12 +155,12 @@ func recordOf(pathname string, size int64) *gconn.Record {
 	})
 }
 
-func entryOf(pathname string, size int64) *gexporter.ExportEntry {
-	return &gexporter.ExportEntry{Record: recordOf(pathname, size)}
+func entryOf(pathname string, size int64) *proto.ExportEntry {
+	return &proto.ExportEntry{Record: recordOf(pathname, size)}
 }
 
 // putData uploads one payload the way the client does.
-func putData(t *testing.T, client gexporter.ExporterClient, id uint64, body []byte, readErr error) *gexporter.PutDataResponse {
+func putData(t *testing.T, client proto.ExporterClient, id uint64, body []byte, readErr error) *proto.PutDataResponse {
 	t.Helper()
 
 	stream, err := client.PutData(t.Context())
@@ -170,7 +170,7 @@ func putData(t *testing.T, client gexporter.ExporterClient, id uint64, body []by
 
 	// the exporter may hang up at any point, which ends the stream
 	// with io.EOF and is answered by the response, not by the send.
-	send := func(req *gexporter.PutDataRequest) bool {
+	send := func(req *proto.PutDataRequest) bool {
 		err := stream.Send(req)
 		if err != nil && !errors.Is(err, io.EOF) {
 			t.Fatalf("send: %v", err)
@@ -178,18 +178,18 @@ func putData(t *testing.T, client gexporter.ExporterClient, id uint64, body []by
 		return err == nil
 	}
 
-	send(&gexporter.PutDataRequest{
-		Packet: &gexporter.PutDataRequest_Id{Id: id},
+	send(&proto.PutDataRequest{
+		Packet: &proto.PutDataRequest_Id{Id: id},
 	})
 
 	if readErr != nil {
-		send(&gexporter.PutDataRequest{
-			Packet: &gexporter.PutDataRequest_Error{Error: readErr.Error()},
+		send(&proto.PutDataRequest{
+			Packet: &proto.PutDataRequest_Error{Error: readErr.Error()},
 		})
 	} else {
 		for chunk := range chunked(body, 4096) {
-			pkt := &gexporter.PutDataRequest_Chunk{Chunk: chunk}
-			if !send(&gexporter.PutDataRequest{Packet: pkt}) {
+			pkt := &proto.PutDataRequest_Chunk{Chunk: chunk}
+			if !send(&proto.PutDataRequest{Packet: pkt}) {
 				break
 			}
 		}
@@ -218,7 +218,7 @@ func chunked(body []byte, size int) iter.Seq[[]byte] {
 
 // exportEntries runs a whole Export session, sending entries and
 // uploading the bodies the dispatch function hands back.
-func exportEntries(t *testing.T, client gexporter.ExporterClient, entries []*gexporter.ExportEntry, upload func()) {
+func exportEntries(t *testing.T, client proto.ExporterClient, entries []*proto.ExportEntry, upload func()) {
 	t.Helper()
 
 	stream, err := client.Export(t.Context())
@@ -239,8 +239,8 @@ func exportEntries(t *testing.T, client gexporter.ExporterClient, entries []*gex
 	}()
 
 	for _, entry := range entries {
-		if err := stream.Send(&gexporter.ExportRequest{
-			Packet: &gexporter.ExportRequest_Entry{Entry: entry},
+		if err := stream.Send(&proto.ExportRequest{
+			Packet: &proto.ExportRequest_Entry{Entry: entry},
 		}); err != nil {
 			t.Fatalf("send entry: %v", err)
 		}
@@ -280,7 +280,7 @@ func TestExporterServerInlinePayload(t *testing.T) {
 			entry := entryOf("/f", int64(len(tc.body)))
 			entry.Chunk = tc.body
 
-			exportEntries(t, client, []*gexporter.ExportEntry{entry}, nil)
+			exportEntries(t, client, []*proto.ExportEntry{entry}, nil)
 
 			got := exp.records()
 			if len(got) != 1 {
@@ -320,10 +320,10 @@ func TestExporterServerStreamedPayload(t *testing.T) {
 					putData(t, client, 1, body, nil)
 				}()
 				// the upload blocks until the record shows up
-				exportEntries(t, client, []*gexporter.ExportEntry{entry}, nil)
+				exportEntries(t, client, []*proto.ExportEntry{entry}, nil)
 				<-done
 			} else {
-				exportEntries(t, client, []*gexporter.ExportEntry{entry}, upload)
+				exportEntries(t, client, []*proto.ExportEntry{entry}, upload)
 			}
 
 			got := exp.records()
@@ -349,7 +349,7 @@ func TestExporterServerPayloadError(t *testing.T) {
 	entry := entryOf("/f", 4096)
 	entry.Id = 1
 
-	exportEntries(t, client, []*gexporter.ExportEntry{entry}, func() {
+	exportEntries(t, client, []*proto.ExportEntry{entry}, func() {
 		putData(t, client, 1, nil, errors.New("boom"))
 	})
 
@@ -371,8 +371,8 @@ func TestExporterServerAbortedPayload(t *testing.T) {
 	entry := entryOf("/f", 1<<20)
 	entry.Id = 1
 
-	var res *gexporter.PutDataResponse
-	exportEntries(t, client, []*gexporter.ExportEntry{entry}, func() {
+	var res *proto.PutDataResponse
+	exportEntries(t, client, []*proto.ExportEntry{entry}, func() {
 		res = putData(t, client, 1, bytes.Repeat([]byte("x"), 1<<20), nil)
 	})
 
@@ -391,7 +391,7 @@ func TestExporterServerRecordsDoNotWaitOnPayloads(t *testing.T) {
 
 	body := bytes.Repeat([]byte("x"), 64*1024)
 
-	entries := make([]*gexporter.ExportEntry, count)
+	entries := make([]*proto.ExportEntry, count)
 	for i := range entries {
 		entries[i] = entryOf("/f", int64(len(body)))
 		entries[i].Id = uint64(i + 1)
@@ -448,7 +448,7 @@ func TestExporterServerLegacyProtocol(t *testing.T) {
 		}
 	}()
 
-	send := func(packet *gexporter.ExportRequest) {
+	send := func(packet *proto.ExportRequest) {
 		t.Helper()
 		if err := stream.Send(packet); err != nil {
 			t.Errorf("send: %v", err)
@@ -456,18 +456,18 @@ func TestExporterServerLegacyProtocol(t *testing.T) {
 	}
 
 	for _, pathname := range []string{"/a", "/b"} {
-		send(&gexporter.ExportRequest{
-			Packet: &gexporter.ExportRequest_Record{
+		send(&proto.ExportRequest{
+			Packet: &proto.ExportRequest_Record{
 				Record: recordOf(pathname, int64(len(body))),
 			},
 		})
 		for chunk := range chunked(body, 4096) {
-			pkt := &gexporter.ExportRequest_Chunk{Chunk: chunk}
-			send(&gexporter.ExportRequest{Packet: pkt})
+			pkt := &proto.ExportRequest_Chunk{Chunk: chunk}
+			send(&proto.ExportRequest{Packet: pkt})
 		}
 		// the terminator telling the reader it reached the end
-		send(&gexporter.ExportRequest{
-			Packet: &gexporter.ExportRequest_Chunk{Chunk: nil},
+		send(&proto.ExportRequest{
+			Packet: &proto.ExportRequest_Chunk{Chunk: nil},
 		})
 	}
 
@@ -511,8 +511,8 @@ func TestExporterServerReleasesPayloadsOnClose(t *testing.T) {
 
 	entry := entryOf("/f", 1<<20)
 	entry.Id = 1
-	if err := stream.Send(&gexporter.ExportRequest{
-		Packet: &gexporter.ExportRequest_Entry{Entry: entry},
+	if err := stream.Send(&proto.ExportRequest{
+		Packet: &proto.ExportRequest_Entry{Entry: entry},
 	}); err != nil {
 		t.Fatalf("send entry: %v", err)
 	}
@@ -525,7 +525,7 @@ func TestExporterServerReleasesPayloadsOnClose(t *testing.T) {
 		t.Fatal("timeout waiting for the exporter to get the record")
 	}
 
-	if _, err := client.Close(t.Context(), &gexporter.CloseRequest{}); err != nil {
+	if _, err := client.Close(t.Context(), &proto.CloseRequest{}); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
@@ -566,8 +566,8 @@ func TestRunExporterOnReleasesPayloadsOnShutdown(t *testing.T) {
 
 	entry := entryOf("/f", 1<<20)
 	entry.Id = 1
-	if err := stream.Send(&gexporter.ExportRequest{
-		Packet: &gexporter.ExportRequest_Entry{Entry: entry},
+	if err := stream.Send(&proto.ExportRequest{
+		Packet: &proto.ExportRequest_Entry{Entry: entry},
 	}); err != nil {
 		t.Fatalf("send entry: %v", err)
 	}
@@ -607,8 +607,8 @@ func TestExporterServerAnnouncesPutData(t *testing.T) {
 		},
 	}
 
-	res, err := plugin.Init(t.Context(), &gexporter.InitRequest{
-		Options: &gexporter.Options{Maxconcurrency: 4},
+	res, err := plugin.Init(t.Context(), &proto.InitRequest{
+		Options: &proto.Options{Maxconcurrency: 4},
 		Proto:   "p",
 	})
 	if err != nil {

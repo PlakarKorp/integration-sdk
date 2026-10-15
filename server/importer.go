@@ -8,8 +8,8 @@ import (
 	"io/fs"
 	"net"
 
-	gconn "github.com/PlakarKorp/integration-grpc"
-	gimporter "github.com/PlakarKorp/integration-grpc/importer"
+	conn "github.com/PlakarKorp/integration-sdk/proto"
+	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/importer"
 	"github.com/PlakarKorp/kloset/location"
@@ -23,12 +23,12 @@ type importerPluginServer struct {
 	importer       importer.Importer
 	flags          location.Flags
 	maxconcurrency int
-	readers        *gconn.HoldingReaders
+	readers        *conn.HoldingReaders
 
-	gimporter.UnimplementedImporterServer
+	proto.UnimplementedImporterServer
 }
 
-func (plugin *importerPluginServer) Init(ctx context.Context, req *gimporter.InitRequest) (*gimporter.InitResponse, error) {
+func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
 	opts := connectors.Options{
 		Hostname:        req.Options.Hostname,
 		OperatingSystem: req.Options.Os,
@@ -46,8 +46,8 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *gimporter.Ini
 	plugin.importer = imp
 	plugin.flags = imp.Flags()
 	plugin.maxconcurrency = int(req.Options.Maxconcurrency)
-	plugin.readers = gconn.NewHoldingReaders()
-	return &gimporter.InitResponse{
+	plugin.readers = conn.NewHoldingReaders()
+	return &proto.InitResponse{
 		Origin: imp.Origin(),
 		Type:   imp.Type(),
 		Root:   imp.Root(),
@@ -55,14 +55,14 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *gimporter.Ini
 	}, nil
 }
 
-func (plugin *importerPluginServer) Ping(ctx context.Context, req *gimporter.PingRequest) (*gimporter.PingResponse, error) {
+func (plugin *importerPluginServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
 	return nil, plugin.importer.Ping(ctx)
 }
 
-func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[gimporter.ImportRequest, gimporter.ImportResponse], records <-chan *connectors.Record) error {
+func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], records <-chan *connectors.Record) error {
 	for record := range records {
-		hdr := gimporter.ImportResponse{
-			Record: gconn.RecordToProto(record),
+		hdr := proto.ImportResponse{
+			Record: conn.RecordToProto(record),
 		}
 
 		if record.Reader != nil {
@@ -74,10 +74,10 @@ func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[
 		}
 	}
 
-	return stream.Send(&gimporter.ImportResponse{Finished: true})
+	return stream.Send(&proto.ImportResponse{Finished: true})
 }
 
-func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServer[gimporter.ImportRequest, gimporter.ImportResponse], results chan<- *connectors.Result) error {
+func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], results chan<- *connectors.Result) error {
 	if results != nil {
 		defer close(results)
 	}
@@ -91,7 +91,7 @@ func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServ
 			return err
 		}
 
-		result, err := gconn.ResultFromProto(res.Result)
+		result, err := conn.ResultFromProto(res.Result)
 		if err != nil {
 			return err
 		}
@@ -106,7 +106,7 @@ func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServ
 	}
 }
 
-func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[gimporter.ImportRequest, gimporter.ImportResponse]) error {
+func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse]) error {
 	var (
 		size    = plugin.maxconcurrency
 		records = make(chan *connectors.Record, size)
@@ -137,7 +137,7 @@ func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[gimpo
 	return wg.Wait()
 }
 
-func (plugin *importerPluginServer) Open(req *gimporter.OpenRequest, stream grpc.ServerStreamingServer[gimporter.OpenResponse]) error {
+func (plugin *importerPluginServer) Open(req *proto.OpenRequest, stream grpc.ServerStreamingServer[proto.OpenResponse]) error {
 	rd := plugin.readers.Get(&connectors.Record{
 		Pathname:  req.Record.Pathname,
 		IsXattr:   req.Record.IsXattr,
@@ -154,7 +154,7 @@ func (plugin *importerPluginServer) Open(req *gimporter.OpenRequest, stream grpc
 	for {
 		n, err := rd.Read(buf)
 		if n > 0 {
-			err := stream.Send(&gimporter.OpenResponse{
+			err := stream.Send(&proto.OpenResponse{
 				Chunk: buf[:n],
 			})
 			if err != nil {
@@ -170,13 +170,13 @@ func (plugin *importerPluginServer) Open(req *gimporter.OpenRequest, stream grpc
 	}
 }
 
-func (plugin *importerPluginServer) Close(ctx context.Context, req *gimporter.CloseRequest) (*gimporter.CloseResponse, error) {
+func (plugin *importerPluginServer) Close(ctx context.Context, req *proto.CloseRequest) (*proto.CloseResponse, error) {
 	plugin.readers.Close()
 
 	if err := plugin.importer.Close(ctx); err != nil {
 		return nil, err
 	}
-	return &gimporter.CloseResponse{}, nil
+	return &proto.CloseResponse{}, nil
 }
 
 // RunImporter starts the gRPC server for the importer plugin.
@@ -192,7 +192,7 @@ func RunImporter(ctx context.Context, constructor importer.ImporterFn) error {
 
 func RunImporterOn(ctx context.Context, constructor importer.ImporterFn, listener net.Listener) error {
 	server := grpc.NewServer()
-	gimporter.RegisterImporterServer(server, &importerPluginServer{
+	proto.RegisterImporterServer(server, &importerPluginServer{
 		constructor: constructor,
 	})
 

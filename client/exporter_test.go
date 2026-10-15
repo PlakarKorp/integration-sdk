@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	gconn "github.com/PlakarKorp/integration-grpc"
+	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/objects"
@@ -73,7 +73,7 @@ type fakeExporter struct {
 
 	// entries and payloads are joined into received as the two halves
 	// of a record arrive, in either order.
-	entries  map[uint64]*gconn.Record
+	entries  map[uint64]*conn.Record
 	payloads map[uint64][]byte
 	// payloadErrs holds what the client reported it could not read.
 	payloadErrs map[uint64]string
@@ -177,7 +177,7 @@ func (f *fakeExporter) PutData(stream grpc.ClientStreamingServer[proto.PutDataRe
 }
 
 type receivedFile struct {
-	record  *gconn.Record
+	record  *conn.Record
 	payload []byte
 }
 
@@ -208,7 +208,7 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 		return f.earlyExportErr
 	}
 
-	var current *gconn.Record
+	var current *conn.Record
 	var buf bytes.Buffer
 
 	// Pre-queue any responses to send after we see at least one record.
@@ -273,7 +273,7 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 		for len(pending) > 0 && len(f.received) > 0 {
 			r := pending[0]
 			pending = pending[1:]
-			if err := stream.Send(&proto.ExportResponse{Result: gconn.ResultToProto(r)}); err != nil {
+			if err := stream.Send(&proto.ExportResponse{Result: conn.ResultToProto(r)}); err != nil {
 				f.mu.Unlock()
 				return err
 			}
@@ -644,7 +644,7 @@ func TestExporter_TransmitRecordsCollapsesEOF(t *testing.T) {
 func newEntryServer() *fakeExporter {
 	return &fakeExporter{
 		hasPutData:  true,
-		entries:     make(map[uint64]*gconn.Record),
+		entries:     make(map[uint64]*conn.Record),
 		payloads:    make(map[uint64][]byte),
 		payloadErrs: make(map[uint64]string),
 	}

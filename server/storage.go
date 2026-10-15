@@ -7,7 +7,8 @@ import (
 
 	"github.com/PlakarKorp/kloset/objects"
 
-	gstorage "github.com/PlakarKorp/integration-grpc/storage"
+	"github.com/PlakarKorp/integration-sdk/client"
+	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"github.com/PlakarKorp/kloset/connectors/storage"
 
 	"google.golang.org/grpc"
@@ -17,17 +18,17 @@ type storagePluginServer struct {
 	constructor storage.StoreFn
 	storage     storage.Store
 
-	gstorage.UnimplementedStoreServer
+	proto.UnimplementedStoreServer
 }
 
-func (plugin *storagePluginServer) Init(ctx context.Context, req *gstorage.InitRequest) (*gstorage.InitResponse, error) {
+func (plugin *storagePluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
 	storage, err := plugin.constructor(ctx, req.Proto, req.Config)
 	if err != nil {
 		return nil, err
 	}
 
 	plugin.storage = storage
-	return &gstorage.InitResponse{
+	return &proto.InitResponse{
 		Origin: storage.Origin(),
 		Type:   storage.Type(),
 		Root:   storage.Root(),
@@ -35,49 +36,49 @@ func (plugin *storagePluginServer) Init(ctx context.Context, req *gstorage.InitR
 	}, nil
 }
 
-func (plugin *storagePluginServer) Create(ctx context.Context, req *gstorage.CreateRequest) (*gstorage.CreateResponse, error) {
+func (plugin *storagePluginServer) Create(ctx context.Context, req *proto.CreateRequest) (*proto.CreateResponse, error) {
 	err := plugin.storage.Create(ctx, req.Config)
 	if err != nil {
 		return nil, err
 	}
-	return &gstorage.CreateResponse{}, nil
+	return &proto.CreateResponse{}, nil
 }
 
-func (plugin *storagePluginServer) Open(ctx context.Context, req *gstorage.OpenRequest) (*gstorage.OpenResponse, error) {
+func (plugin *storagePluginServer) Open(ctx context.Context, req *proto.OpenRequest) (*proto.OpenResponse, error) {
 	b, err := plugin.storage.Open(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &gstorage.OpenResponse{
+	return &proto.OpenResponse{
 		Config: b,
 	}, nil
 }
 
-func (plugin *storagePluginServer) Ping(ctx context.Context, req *gstorage.PingRequest) (*gstorage.PingResponse, error) {
+func (plugin *storagePluginServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
 	if err := plugin.storage.Ping(ctx); err != nil {
 		return nil, err
 	}
-	return &gstorage.PingResponse{}, nil
+	return &proto.PingResponse{}, nil
 }
 
-func (plugin *storagePluginServer) Mode(ctx context.Context, req *gstorage.ModeRequest) (*gstorage.ModeResponse, error) {
+func (plugin *storagePluginServer) Mode(ctx context.Context, req *proto.ModeRequest) (*proto.ModeResponse, error) {
 	mode, err := plugin.storage.Mode(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &gstorage.ModeResponse{Mode: int32(mode)}, nil
+	return &proto.ModeResponse{Mode: int32(mode)}, nil
 }
 
-func (plugin *storagePluginServer) Size(ctx context.Context, req *gstorage.SizeRequest) (*gstorage.SizeResponse, error) {
+func (plugin *storagePluginServer) Size(ctx context.Context, req *proto.SizeRequest) (*proto.SizeResponse, error) {
 	size, err := plugin.storage.Size(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return &gstorage.SizeResponse{Size: size}, nil
+	return &proto.SizeResponse{Size: size}, nil
 }
 
-func (plugin *storagePluginServer) List(ctx context.Context, req *gstorage.ListRequest) (*gstorage.ListResponse, error) {
+func (plugin *storagePluginServer) List(ctx context.Context, req *proto.ListRequest) (*proto.ListResponse, error) {
 	ctx = storage.WithFlag(ctx, storage.StorageFlag(req.Flags))
 	macs, err := plugin.storage.List(ctx, storage.StorageResource(req.Type))
 	if err != nil {
@@ -89,10 +90,10 @@ func (plugin *storagePluginServer) List(ctx context.Context, req *gstorage.ListR
 		gmacs = append(gmacs, macs[i][:])
 	}
 
-	return &gstorage.ListResponse{Macs: gmacs}, nil
+	return &proto.ListResponse{Macs: gmacs}, nil
 }
 
-func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[gstorage.PutRequest, gstorage.PutResponse]) error {
+func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[proto.PutRequest, proto.PutResponse]) error {
 	// read meta first
 	req, err := stream.Recv()
 	if err != nil {
@@ -105,7 +106,7 @@ func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[gstorag
 		ctx = storage.WithFlag(stream.Context(), storage.StorageFlag(req.Flags))
 	)
 
-	size, err := plugin.storage.Put(ctx, res, mac, gstorage.ReceiveChunks(func() ([]byte, error) {
+	size, err := plugin.storage.Put(ctx, res, mac, client.ReceiveChunks(func() ([]byte, error) {
 		req, err := stream.Recv()
 		if err != nil {
 			return nil, err
@@ -116,10 +117,10 @@ func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[gstorag
 		return err
 	}
 
-	return stream.SendAndClose(&gstorage.PutResponse{BytesWritten: size})
+	return stream.SendAndClose(&proto.PutResponse{BytesWritten: size})
 }
 
-func (plugin *storagePluginServer) Get(req *gstorage.GetRequest, stream grpc.ServerStreamingServer[gstorage.GetResponse]) error {
+func (plugin *storagePluginServer) Get(req *proto.GetRequest, stream grpc.ServerStreamingServer[proto.GetResponse]) error {
 	var (
 		res = storage.StorageResource(req.Type)
 		mac = objects.MAC(req.Mac)
@@ -140,8 +141,8 @@ func (plugin *storagePluginServer) Get(req *gstorage.GetRequest, stream grpc.Ser
 		return err
 	}
 
-	_, err = gstorage.SendChunks(r, func(chunk []byte) error {
-		return stream.Send(&gstorage.GetResponse{
+	_, err = client.SendChunks(r, func(chunk []byte) error {
+		return stream.Send(&proto.GetResponse{
 			Chunk: chunk,
 		})
 	})
@@ -149,21 +150,21 @@ func (plugin *storagePluginServer) Get(req *gstorage.GetRequest, stream grpc.Ser
 
 }
 
-func (plugin *storagePluginServer) Delete(ctx context.Context, req *gstorage.DeleteRequest) (*gstorage.DeleteResponse, error) {
+func (plugin *storagePluginServer) Delete(ctx context.Context, req *proto.DeleteRequest) (*proto.DeleteResponse, error) {
 	ctx = storage.WithFlag(ctx, storage.StorageFlag(req.Flags))
 	if err := plugin.storage.Delete(ctx, storage.StorageResource(req.Type), objects.MAC(req.Mac)); err != nil {
 		return nil, err
 	}
 
-	return &gstorage.DeleteResponse{}, nil
+	return &proto.DeleteResponse{}, nil
 }
 
-func (plugin *storagePluginServer) Close(ctx context.Context, req *gstorage.CloseRequest) (*gstorage.CloseResponse, error) {
+func (plugin *storagePluginServer) Close(ctx context.Context, req *proto.CloseRequest) (*proto.CloseResponse, error) {
 	err := plugin.storage.Close(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &gstorage.CloseResponse{}, nil
+	return &proto.CloseResponse{}, nil
 }
 
 // RunStorage starts the gRPC server for the storage plugin.
@@ -180,7 +181,7 @@ func RunStorage(ctx context.Context, constructor storage.StoreFn) error {
 func RunStorageOn(ctx context.Context, constructor storage.StoreFn, listener net.Listener) error {
 	server := grpc.NewServer()
 
-	gstorage.RegisterStoreServer(server, &storagePluginServer{
+	proto.RegisterStoreServer(server, &storagePluginServer{
 		constructor: constructor,
 	})
 

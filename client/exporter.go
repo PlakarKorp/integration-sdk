@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	gconn "github.com/PlakarKorp/integration-grpc"
+	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/exporter"
@@ -133,7 +133,7 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportR
 	for record := range records {
 		hdr := proto.ExportRequest{
 			Packet: &proto.ExportRequest_Record{
-				Record: gconn.RecordToProto(record),
+				Record: conn.RecordToProto(record),
 			},
 		}
 		if err := stream.Send(&hdr); err != nil {
@@ -248,7 +248,7 @@ func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingCli
 			return err
 		}
 
-		entry := &proto.ExportEntry{Record: gconn.RecordToProto(record)}
+		entry := &proto.ExportEntry{Record: conn.RecordToProto(record)}
 		if !entry.Record.HasReader {
 			if err := send(entry); err != nil {
 				return err
@@ -397,7 +397,7 @@ func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRe
 			return fmt.Errorf("expected a result")
 		}
 
-		result, err := gconn.ResultFromProto(res.Result)
+		result, err := conn.ResultFromProto(res.Result)
 		if err != nil {
 			return err
 		}

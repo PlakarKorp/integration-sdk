@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	gconn "github.com/PlakarKorp/integration-grpc"
+	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/connectors/importer"
@@ -110,11 +110,11 @@ func (g *Importer) open(parentctx context.Context, record *connectors.Record) (i
 	ctx, cancel := context.WithCancel(parentctx)
 
 	stream, err := g.client.Open(ctx, &proto.OpenRequest{
-		Record: &gconn.Record{
+		Record: &conn.Record{
 			Pathname:  record.Pathname,
 			IsXattr:   record.IsXattr,
 			XattrName: record.XattrName,
-			XattrType: gconn.ExtendedAttributeType(record.XattrType),
+			XattrType: conn.ExtendedAttributeType(record.XattrType),
 			Target:    record.Target,
 		},
 	})
@@ -192,7 +192,7 @@ func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreaming
 			return fmt.Errorf("expected a record")
 		}
 
-		record, err := gconn.RecordFromProto(res.Record)
+		record, err := conn.RecordFromProto(res.Record)
 		if err != nil {
 			return err
 		}
@@ -208,7 +208,7 @@ func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreaming
 func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], results <-chan *connectors.Result) error {
 	for result := range results {
 		hdr := proto.ImportRequest{
-			Result: gconn.ResultToProto(result),
+			Result: conn.ResultToProto(result),
 		}
 		if err := stream.Send(&hdr); err != nil {
 			for range results {

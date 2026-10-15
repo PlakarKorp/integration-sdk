@@ -7,7 +7,7 @@
 package exporter
 
 import (
-	integration_grpc "github.com/PlakarKorp/integration-grpc"
+	proto "github.com/PlakarKorp/integration-sdk/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -326,9 +326,9 @@ func (*PingResponse) Descriptor() ([]byte, []int) {
 }
 
 type ExportEntry struct {
-	state  protoimpl.MessageState   `protogen:"open.v1"`
-	Record *integration_grpc.Record `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
-	Id     uint64                   `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Record *proto.Record          `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	Id     uint64                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
 	// for "small" records, the client might send the whole content
 	// inline rather than waste one PutData() on it.
 	Chunk         []byte `protobuf:"bytes,3,opt,name=chunk,proto3,oneof" json:"chunk,omitempty"`
@@ -366,7 +366,7 @@ func (*ExportEntry) Descriptor() ([]byte, []int) {
 	return file_exporter_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ExportEntry) GetRecord() *integration_grpc.Record {
+func (x *ExportEntry) GetRecord() *proto.Record {
 	if x != nil {
 		return x.Record
 	}
@@ -436,7 +436,7 @@ func (x *ExportRequest) GetPacket() isExportRequest_Packet {
 	return nil
 }
 
-func (x *ExportRequest) GetRecord() *integration_grpc.Record {
+func (x *ExportRequest) GetRecord() *proto.Record {
 	if x != nil {
 		if x, ok := x.Packet.(*ExportRequest_Record); ok {
 			return x.Record
@@ -469,7 +469,7 @@ type isExportRequest_Packet interface {
 
 type ExportRequest_Record struct {
 	// files are either sent as a record followed by multiple chunks
-	Record *integration_grpc.Record `protobuf:"bytes,1,opt,name=record,proto3,oneof"`
+	Record *proto.Record `protobuf:"bytes,1,opt,name=record,proto3,oneof"`
 }
 
 type ExportRequest_Chunk struct {
@@ -489,8 +489,8 @@ func (*ExportRequest_Chunk) isExportRequest_Packet() {}
 func (*ExportRequest_Entry) isExportRequest_Packet() {}
 
 type ExportResponse struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Result        *integration_grpc.Result `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *proto.Result          `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -525,7 +525,7 @@ func (*ExportResponse) Descriptor() ([]byte, []int) {
 	return file_exporter_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *ExportResponse) GetResult() *integration_grpc.Result {
+func (x *ExportResponse) GetResult() *proto.Result {
 	if x != nil {
 		return x.Result
 	}
@@ -820,21 +820,21 @@ func file_exporter_proto_rawDescGZIP() []byte {
 
 var file_exporter_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_exporter_proto_goTypes = []any{
-	(*Options)(nil),                 // 0: plakar.exporter.Options
-	(*InitRequest)(nil),             // 1: plakar.exporter.InitRequest
-	(*InitResponse)(nil),            // 2: plakar.exporter.InitResponse
-	(*PingRequest)(nil),             // 3: plakar.exporter.PingRequest
-	(*PingResponse)(nil),            // 4: plakar.exporter.PingResponse
-	(*ExportEntry)(nil),             // 5: plakar.exporter.ExportEntry
-	(*ExportRequest)(nil),           // 6: plakar.exporter.ExportRequest
-	(*ExportResponse)(nil),          // 7: plakar.exporter.ExportResponse
-	(*PutDataRequest)(nil),          // 8: plakar.exporter.PutDataRequest
-	(*PutDataResponse)(nil),         // 9: plakar.exporter.PutDataResponse
-	(*CloseRequest)(nil),            // 10: plakar.exporter.CloseRequest
-	(*CloseResponse)(nil),           // 11: plakar.exporter.CloseResponse
-	nil,                             // 12: plakar.exporter.InitRequest.ConfigEntry
-	(*integration_grpc.Record)(nil), // 13: plakar.connectors.Record
-	(*integration_grpc.Result)(nil), // 14: plakar.connectors.Result
+	(*Options)(nil),         // 0: plakar.exporter.Options
+	(*InitRequest)(nil),     // 1: plakar.exporter.InitRequest
+	(*InitResponse)(nil),    // 2: plakar.exporter.InitResponse
+	(*PingRequest)(nil),     // 3: plakar.exporter.PingRequest
+	(*PingResponse)(nil),    // 4: plakar.exporter.PingResponse
+	(*ExportEntry)(nil),     // 5: plakar.exporter.ExportEntry
+	(*ExportRequest)(nil),   // 6: plakar.exporter.ExportRequest
+	(*ExportResponse)(nil),  // 7: plakar.exporter.ExportResponse
+	(*PutDataRequest)(nil),  // 8: plakar.exporter.PutDataRequest
+	(*PutDataResponse)(nil), // 9: plakar.exporter.PutDataResponse
+	(*CloseRequest)(nil),    // 10: plakar.exporter.CloseRequest
+	(*CloseResponse)(nil),   // 11: plakar.exporter.CloseResponse
+	nil,                     // 12: plakar.exporter.InitRequest.ConfigEntry
+	(*proto.Record)(nil),    // 13: plakar.connectors.Record
+	(*proto.Result)(nil),    // 14: plakar.connectors.Result
 }
 var file_exporter_proto_depIdxs = []int32{
 	0,  // 0: plakar.exporter.InitRequest.options:type_name -> plakar.exporter.Options

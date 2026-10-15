@@ -7,7 +7,7 @@
 package importer
 
 import (
-	integration_grpc "github.com/PlakarKorp/integration-grpc"
+	proto "github.com/PlakarKorp/integration-sdk/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -315,8 +315,8 @@ func (*PingResponse) Descriptor() ([]byte, []int) {
 }
 
 type ImportRequest struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Result        *integration_grpc.Result `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *proto.Result          `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -351,7 +351,7 @@ func (*ImportRequest) Descriptor() ([]byte, []int) {
 	return file_importer_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ImportRequest) GetResult() *integration_grpc.Result {
+func (x *ImportRequest) GetResult() *proto.Result {
 	if x != nil {
 		return x.Result
 	}
@@ -359,8 +359,8 @@ func (x *ImportRequest) GetResult() *integration_grpc.Result {
 }
 
 type ImportResponse struct {
-	state  protoimpl.MessageState   `protogen:"open.v1"`
-	Record *integration_grpc.Record `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Record *proto.Record          `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
 	// signals that the importer is done sending records, will just wait
 	// for the acknowledgments.  result will be ignored if this is set.
 	Finished      bool `protobuf:"varint,2,opt,name=finished,proto3" json:"finished,omitempty"`
@@ -398,7 +398,7 @@ func (*ImportResponse) Descriptor() ([]byte, []int) {
 	return file_importer_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *ImportResponse) GetRecord() *integration_grpc.Record {
+func (x *ImportResponse) GetRecord() *proto.Record {
 	if x != nil {
 		return x.Record
 	}
@@ -413,8 +413,8 @@ func (x *ImportResponse) GetFinished() bool {
 }
 
 type OpenRequest struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Record        *integration_grpc.Record `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Record        *proto.Record          `protobuf:"bytes,1,opt,name=record,proto3" json:"record,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -449,7 +449,7 @@ func (*OpenRequest) Descriptor() ([]byte, []int) {
 	return file_importer_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *OpenRequest) GetRecord() *integration_grpc.Record {
+func (x *OpenRequest) GetRecord() *proto.Record {
 	if x != nil {
 		return x.Record
 	}
@@ -631,20 +631,20 @@ func file_importer_proto_rawDescGZIP() []byte {
 
 var file_importer_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_importer_proto_goTypes = []any{
-	(*Options)(nil),                 // 0: importer.Options
-	(*InitRequest)(nil),             // 1: importer.InitRequest
-	(*InitResponse)(nil),            // 2: importer.InitResponse
-	(*PingRequest)(nil),             // 3: importer.PingRequest
-	(*PingResponse)(nil),            // 4: importer.PingResponse
-	(*ImportRequest)(nil),           // 5: importer.ImportRequest
-	(*ImportResponse)(nil),          // 6: importer.ImportResponse
-	(*OpenRequest)(nil),             // 7: importer.OpenRequest
-	(*OpenResponse)(nil),            // 8: importer.OpenResponse
-	(*CloseRequest)(nil),            // 9: importer.CloseRequest
-	(*CloseResponse)(nil),           // 10: importer.CloseResponse
-	nil,                             // 11: importer.InitRequest.ConfigEntry
-	(*integration_grpc.Result)(nil), // 12: plakar.connectors.Result
-	(*integration_grpc.Record)(nil), // 13: plakar.connectors.Record
+	(*Options)(nil),        // 0: importer.Options
+	(*InitRequest)(nil),    // 1: importer.InitRequest
+	(*InitResponse)(nil),   // 2: importer.InitResponse
+	(*PingRequest)(nil),    // 3: importer.PingRequest
+	(*PingResponse)(nil),   // 4: importer.PingResponse
+	(*ImportRequest)(nil),  // 5: importer.ImportRequest
+	(*ImportResponse)(nil), // 6: importer.ImportResponse
+	(*OpenRequest)(nil),    // 7: importer.OpenRequest
+	(*OpenResponse)(nil),   // 8: importer.OpenResponse
+	(*CloseRequest)(nil),   // 9: importer.CloseRequest
+	(*CloseResponse)(nil),  // 10: importer.CloseResponse
+	nil,                    // 11: importer.InitRequest.ConfigEntry
+	(*proto.Result)(nil),   // 12: plakar.connectors.Result
+	(*proto.Record)(nil),   // 13: plakar.connectors.Record
 }
 var file_importer_proto_depIdxs = []int32{
 	0,  // 0: importer.InitRequest.options:type_name -> importer.Options
