@@ -21,10 +21,10 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// fakeServer implements ImporterServer in-process for tests.
+// fakeImporter implements ImporterServer in-process for tests.
 // ---------------------------------------------------------------------------
 
-type fakeServer struct {
+type fakeImporter struct {
 	proto.UnimplementedImporterServer
 
 	initResp *proto.InitResponse
@@ -51,22 +51,22 @@ type fakeServer struct {
 	closeErr error
 }
 
-func (f *fakeServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+func (f *fakeImporter) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
 	if f.initErr != nil {
 		return nil, f.initErr
 	}
 	return f.initResp, nil
 }
 
-func (f *fakeServer) Ping(ctx context.Context, _ *proto.PingRequest) (*proto.PingResponse, error) {
+func (f *fakeImporter) Ping(ctx context.Context, _ *proto.PingRequest) (*proto.PingResponse, error) {
 	return &proto.PingResponse{}, f.pingErr
 }
 
-func (f *fakeServer) Close(ctx context.Context, _ *proto.CloseRequest) (*proto.CloseResponse, error) {
+func (f *fakeImporter) Close(ctx context.Context, _ *proto.CloseRequest) (*proto.CloseResponse, error) {
 	return &proto.CloseResponse{}, f.closeErr
 }
 
-func (f *fakeServer) Import(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse]) error {
+func (f *fakeImporter) Import(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse]) error {
 	if f.ackDone != nil {
 		defer close(f.ackDone)
 	}
@@ -102,7 +102,7 @@ func (f *fakeServer) Import(stream grpc.BidiStreamingServer[proto.ImportRequest,
 	return f.importErr
 }
 
-func (f *fakeServer) Open(req *proto.OpenRequest, stream grpc.ServerStreamingServer[proto.OpenResponse]) error {
+func (f *fakeImporter) Open(req *proto.OpenRequest, stream grpc.ServerStreamingServer[proto.OpenResponse]) error {
 	if f.openErr != nil {
 		return f.openErr
 	}
@@ -161,7 +161,7 @@ func runImport(t *testing.T, imp *Importer) (error, []*connectors.Record) {
 // scaffolding
 // ---------------------------------------------------------------------------
 
-func dialTestServer(t *testing.T, srv *fakeServer) (*grpc.ClientConn, func()) {
+func dialImporter(t *testing.T, srv *fakeImporter) (*grpc.ClientConn, func()) {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	s := grpc.NewServer()
@@ -197,7 +197,7 @@ func sampleFI() *gconn.FileInfo {
 // ---------------------------------------------------------------------------
 
 func TestImporter_InitAndGetters(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp: &proto.InitResponse{
 			Origin: "o",
 			Type:   "t",
@@ -205,7 +205,7 @@ func TestImporter_InitAndGetters(t *testing.T) {
 			Flags:  0,
 		},
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "proto", nil)
@@ -228,10 +228,10 @@ func TestImporter_InitAndGetters(t *testing.T) {
 }
 
 func TestImporter_Init_UnwrapsErrors(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initErr: status.Error(codes.Unavailable, "down"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	_, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -241,10 +241,10 @@ func TestImporter_Init_UnwrapsErrors(t *testing.T) {
 }
 
 func TestImporter_Init_CanceledMapsToContextCanceled(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initErr: status.Error(codes.Canceled, "ctx"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	_, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -264,13 +264,13 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	}
 	pbrec := gconn.RecordToProto(rec)
 
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp:   &proto.InitResponse{Type: "t", Root: "/"},
 		records:    []*gconn.Record{pbrec},
 		openChunks: map[string][][]byte{"/a.txt": {[]byte("hello")}},
 		ackDone:    make(chan struct{}),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -326,11 +326,11 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 }
 
 func TestImporter_OpenErrorPropagates(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp: &proto.InitResponse{},
 		openErr:  status.Error(codes.NotFound, "nope"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
@@ -350,11 +350,11 @@ func TestImporter_OpenErrorPropagates(t *testing.T) {
 }
 
 func TestImporter_EarlyImportErrorAfterFinishedIsReported(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp:       &proto.InitResponse{Type: "t", Root: "/"},
 		earlyImportErr: errors.New("import failed: simulated backup tool failure"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
@@ -381,12 +381,12 @@ func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
 		FileInfo: objects.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
 	}
 
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp:       &proto.InitResponse{Type: "t", Root: "/"},
 		records:        []*gconn.Record{gconn.RecordToProto(rec)},
 		earlyImportErr: errors.New("import failed: simulated backup tool failure"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
@@ -413,12 +413,12 @@ func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
 		FileInfo: objects.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
 	}
 
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp:  &proto.InitResponse{Type: "t", Root: "/"},
 		records:   []*gconn.Record{gconn.RecordToProto(rec)},
 		importErr: errors.New("import failed: simulated backup tool failure"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
@@ -440,11 +440,11 @@ func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
 }
 
 func TestImporter_EarlyImportCanceledIsUnwrapped(t *testing.T) {
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp:       &proto.InitResponse{Type: "t", Root: "/"},
 		earlyImportErr: status.Error(codes.Canceled, "ctx"),
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
@@ -465,11 +465,11 @@ func TestImporter_EarlyImportSucceedsAfterFinished(t *testing.T) {
 		FileInfo: objects.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
 	}
 
-	srv := &fakeServer{
+	srv := &fakeImporter{
 		initResp: &proto.InitResponse{Type: "t", Root: "/"},
 		records:  []*gconn.Record{gconn.RecordToProto(rec)},
 	}
-	conn, cleanup := dialTestServer(t, srv)
+	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
