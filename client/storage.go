@@ -14,7 +14,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-package storage
+package client
 
 import (
 	"bytes"
@@ -23,16 +23,15 @@ import (
 	"fmt"
 	"io"
 
+	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"github.com/PlakarKorp/kloset/connectors/storage"
 	"github.com/PlakarKorp/kloset/location"
 	"github.com/PlakarKorp/kloset/objects"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type Store struct {
-	client StoreClient
+	client proto.StoreClient
 	root   string
 	origin string
 	typ    string
@@ -40,33 +39,13 @@ type Store struct {
 	flags  location.Flags
 }
 
-func unwrap(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	status, ok := status.FromError(err)
-	if !ok {
-		return err
-	}
-
-	switch status.Code() {
-	case codes.Canceled:
-		return context.Canceled
-	case codes.Unavailable:
-		return fmt.Errorf("I/O error communicating with the integration (%s)", status.Message())
-	default:
-		return fmt.Errorf("%s", status.Message())
-	}
-}
-
-func NewStorage(ctx context.Context, client grpc.ClientConnInterface, proto string, config map[string]string) (storage.Store, error) {
+func NewStorage(ctx context.Context, client grpc.ClientConnInterface, p string, config map[string]string) (storage.Store, error) {
 	s := &Store{
-		client: NewStoreClient(client),
+		client: proto.NewStoreClient(client),
 	}
 
-	res, err := s.client.Init(ctx, &InitRequest{
-		Proto:  proto,
+	res, err := s.client.Init(ctx, &proto.InitRequest{
+		Proto:  p,
 		Config: config,
 	})
 	if err != nil {
@@ -82,7 +61,7 @@ func NewStorage(ctx context.Context, client grpc.ClientConnInterface, proto stri
 }
 
 func (s *Store) Create(ctx context.Context, config []byte) error {
-	_, err := s.client.Create(ctx, &CreateRequest{
+	_, err := s.client.Create(ctx, &proto.CreateRequest{
 		Config: config,
 	})
 	if err != nil {
@@ -92,7 +71,7 @@ func (s *Store) Create(ctx context.Context, config []byte) error {
 }
 
 func (s *Store) Open(ctx context.Context) ([]byte, error) {
-	resp, err := s.client.Open(ctx, &OpenRequest{})
+	resp, err := s.client.Open(ctx, &proto.OpenRequest{})
 	if err != nil {
 		return nil, unwrap(err)
 	}
@@ -100,7 +79,7 @@ func (s *Store) Open(ctx context.Context) ([]byte, error) {
 }
 
 func (s *Store) Ping(ctx context.Context) error {
-	_, err := s.client.Ping(ctx, &PingRequest{})
+	_, err := s.client.Ping(ctx, &proto.PingRequest{})
 
 	return unwrap(err)
 }
@@ -111,7 +90,7 @@ func (s *Store) Root() string          { return s.root }
 func (s *Store) Flags() location.Flags { return s.flags }
 
 func (s *Store) Mode(ctx context.Context) (storage.Mode, error) {
-	if resp, err := s.client.Mode(ctx, &ModeRequest{}); err != nil {
+	if resp, err := s.client.Mode(ctx, &proto.ModeRequest{}); err != nil {
 		return 0, unwrap(err)
 	} else {
 		return storage.Mode(resp.Mode), nil
@@ -119,7 +98,7 @@ func (s *Store) Mode(ctx context.Context) (storage.Mode, error) {
 }
 
 func (s *Store) Size(ctx context.Context) (int64, error) {
-	resp, err := s.client.Size(ctx, &SizeRequest{})
+	resp, err := s.client.Size(ctx, &proto.SizeRequest{})
 	if err != nil {
 		return -1, unwrap(err)
 	}
@@ -213,9 +192,9 @@ func ReceiveChunks(chunkReceiverFn func() ([]byte, error)) io.ReadCloser {
 }
 
 func (s *Store) List(ctx context.Context, res storage.StorageResource) ([]objects.MAC, error) {
-	resp, err := s.client.List(ctx, &ListRequest{
-		Type:  StorageResource(res),
-		Flags: StorageFlags(storage.Flag(ctx)),
+	resp, err := s.client.List(ctx, &proto.ListRequest{
+		Type:  proto.StorageResource(res),
+		Flags: proto.StorageFlags(storage.Flag(ctx)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list %s: %w", res, unwrap(err))
@@ -237,17 +216,17 @@ func (s *Store) Put(ctx context.Context, res storage.StorageResource, mac object
 		return 0, fmt.Errorf("failed to start Put stream: %w", unwrap(err))
 	}
 
-	err = stream.Send(&PutRequest{
+	err = stream.Send(&proto.PutRequest{
 		Mac:   mac[:],
-		Type:  StorageResource(res),
-		Flags: StorageFlags(storage.Flag(ctx)),
+		Type:  proto.StorageResource(res),
+		Flags: proto.StorageFlags(storage.Flag(ctx)),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to send mac: %w", unwrap(err))
 	}
 
 	n, err := SendChunks(io.NopCloser(rd), func(chunk []byte) error {
-		return stream.Send(&PutRequest{
+		return stream.Send(&proto.PutRequest{
 			Chunk: chunk,
 		})
 	})
@@ -265,19 +244,19 @@ func (s *Store) Put(ctx context.Context, res storage.StorageResource, mac object
 }
 
 func (s *Store) Get(ctx context.Context, res storage.StorageResource, mac objects.MAC, rg *storage.Range) (io.ReadCloser, error) {
-	var grg *GetRequest_Range
+	var grg *proto.GetRequest_Range
 	if rg != nil {
-		grg = &GetRequest_Range{
+		grg = &proto.GetRequest_Range{
 			Offset: rg.Offset,
 			Length: rg.Length,
 		}
 	}
 
-	stream, err := s.client.Get(ctx, &GetRequest{
+	stream, err := s.client.Get(ctx, &proto.GetRequest{
 		Mac:   mac[:],
-		Type:  StorageResource(res),
+		Type:  proto.StorageResource(res),
 		Range: grg,
-		Flags: StorageFlags(storage.Flag(ctx)),
+		Flags: proto.StorageFlags(storage.Flag(ctx)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get %s: %w", res, unwrap(err))
@@ -293,10 +272,10 @@ func (s *Store) Get(ctx context.Context, res storage.StorageResource, mac object
 }
 
 func (s *Store) Delete(ctx context.Context, res storage.StorageResource, mac objects.MAC) error {
-	_, err := s.client.Delete(ctx, &DeleteRequest{
+	_, err := s.client.Delete(ctx, &proto.DeleteRequest{
 		Mac:   mac[:],
-		Type:  StorageResource(res),
-		Flags: StorageFlags(storage.Flag(ctx)),
+		Type:  proto.StorageResource(res),
+		Flags: proto.StorageFlags(storage.Flag(ctx)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete %s: %w", res, unwrap(err))
@@ -305,6 +284,6 @@ func (s *Store) Delete(ctx context.Context, res storage.StorageResource, mac obj
 }
 
 func (s *Store) Close(ctx context.Context) error {
-	_, err := s.client.Close(ctx, &CloseRequest{})
+	_, err := s.client.Close(ctx, &proto.CloseRequest{})
 	return unwrap(err)
 }

@@ -1,4 +1,4 @@
-package storage
+package client
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"net"
 	"testing"
 
+	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"github.com/PlakarKorp/kloset/connectors/storage"
 	"github.com/PlakarKorp/kloset/objects"
 	"google.golang.org/grpc"
@@ -22,7 +23,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type fakeServer struct {
-	UnimplementedStoreServer
+	proto.UnimplementedStoreServer
 
 	openConfig []byte
 	macs       [][]byte
@@ -34,39 +35,39 @@ type fakeServer struct {
 	putErr   error
 
 	receivedMac    []byte
-	receivedType   StorageResource
+	receivedType   proto.StorageResource
 	receivedChunks [][]byte
 }
 
-func (f *fakeServer) Init(ctx context.Context, req *InitRequest) (*InitResponse, error) {
-	return &InitResponse{Origin: "o", Type: "t", Root: "/"}, nil
+func (f *fakeServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+	return &proto.InitResponse{Origin: "o", Type: "t", Root: "/"}, nil
 }
-func (f *fakeServer) Open(ctx context.Context, _ *OpenRequest) (*OpenResponse, error) {
-	return &OpenResponse{Config: f.openConfig}, nil
+func (f *fakeServer) Open(ctx context.Context, _ *proto.OpenRequest) (*proto.OpenResponse, error) {
+	return &proto.OpenResponse{Config: f.openConfig}, nil
 }
-func (f *fakeServer) Create(ctx context.Context, _ *CreateRequest) (*CreateResponse, error) {
-	return &CreateResponse{}, nil
+func (f *fakeServer) Create(ctx context.Context, _ *proto.CreateRequest) (*proto.CreateResponse, error) {
+	return &proto.CreateResponse{}, nil
 }
-func (f *fakeServer) Ping(ctx context.Context, _ *PingRequest) (*PingResponse, error) {
-	return &PingResponse{}, nil
+func (f *fakeServer) Ping(ctx context.Context, _ *proto.PingRequest) (*proto.PingResponse, error) {
+	return &proto.PingResponse{}, nil
 }
-func (f *fakeServer) Close(ctx context.Context, _ *CloseRequest) (*CloseResponse, error) {
-	return &CloseResponse{}, nil
+func (f *fakeServer) Close(ctx context.Context, _ *proto.CloseRequest) (*proto.CloseResponse, error) {
+	return &proto.CloseResponse{}, nil
 }
-func (f *fakeServer) Mode(ctx context.Context, _ *ModeRequest) (*ModeResponse, error) {
-	return &ModeResponse{Mode: f.mode}, nil
+func (f *fakeServer) Mode(ctx context.Context, _ *proto.ModeRequest) (*proto.ModeResponse, error) {
+	return &proto.ModeResponse{Mode: f.mode}, nil
 }
-func (f *fakeServer) Size(ctx context.Context, _ *SizeRequest) (*SizeResponse, error) {
-	return &SizeResponse{Size: 42}, nil
+func (f *fakeServer) Size(ctx context.Context, _ *proto.SizeRequest) (*proto.SizeResponse, error) {
+	return &proto.SizeResponse{Size: 42}, nil
 }
-func (f *fakeServer) List(ctx context.Context, _ *ListRequest) (*ListResponse, error) {
-	return &ListResponse{Macs: f.macs}, nil
+func (f *fakeServer) List(ctx context.Context, _ *proto.ListRequest) (*proto.ListResponse, error) {
+	return &proto.ListResponse{Macs: f.macs}, nil
 }
-func (f *fakeServer) Delete(ctx context.Context, _ *DeleteRequest) (*DeleteResponse, error) {
-	return &DeleteResponse{}, nil
+func (f *fakeServer) Delete(ctx context.Context, _ *proto.DeleteRequest) (*proto.DeleteResponse, error) {
+	return &proto.DeleteResponse{}, nil
 }
 
-func (f *fakeServer) Put(stream grpc.ClientStreamingServer[PutRequest, PutResponse]) error {
+func (f *fakeServer) Put(stream grpc.ClientStreamingServer[proto.PutRequest, proto.PutResponse]) error {
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -86,15 +87,15 @@ func (f *fakeServer) Put(stream grpc.ClientStreamingServer[PutRequest, PutRespon
 	if f.putErr != nil {
 		return f.putErr
 	}
-	return stream.SendAndClose(&PutResponse{BytesWritten: f.putBytes})
+	return stream.SendAndClose(&proto.PutResponse{BytesWritten: f.putBytes})
 }
 
-func (f *fakeServer) Get(_ *GetRequest, stream grpc.ServerStreamingServer[GetResponse]) error {
+func (f *fakeServer) Get(_ *proto.GetRequest, stream grpc.ServerStreamingServer[proto.GetResponse]) error {
 	if f.getErr != nil {
 		return f.getErr
 	}
 	for _, c := range f.getChunks {
-		if err := stream.Send(&GetResponse{Chunk: c}); err != nil {
+		if err := stream.Send(&proto.GetResponse{Chunk: c}); err != nil {
 			return err
 		}
 	}
@@ -109,7 +110,7 @@ func dialTestServer(t *testing.T, srv *fakeServer) (*grpc.ClientConn, func()) {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	s := grpc.NewServer()
-	RegisterStoreServer(s, srv)
+	proto.RegisterStoreServer(s, srv)
 	go func() { _ = s.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough://bufconn",
@@ -307,7 +308,3 @@ func TestReceiveChunks_ReassemblesAcrossChunkBoundaries(t *testing.T) {
 		t.Errorf("payload mismatch: %q", out.String())
 	}
 }
-
-type errReader struct{ err error }
-
-func (e *errReader) Read([]byte) (int, error) { return 0, e.err }
