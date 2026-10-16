@@ -6,41 +6,19 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/PlakarKorp/go-inventory-sdk/inventory"
-	"github.com/PlakarKorp/go-inventory-sdk/sdk"
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/proto/inventory"
 	"github.com/PlakarKorp/pkg"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-func unwrap(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	status, ok := status.FromError(err)
-	if !ok {
-		return err
-	}
-
-	switch status.Code() {
-	case codes.Canceled:
-		return context.Canceled
-	case codes.Unavailable:
-		return fmt.Errorf("I/O error communicating with the integration (%s)", status.Message())
-	default:
-		return fmt.Errorf("%s", status.Message())
-	}
-}
-
 type grpcInventoryClient struct {
-	client sdk.InventoryClient
+	client inventory.InventoryClient
 }
 
-func NewGrpcInventory(ctx context.Context, client grpc.ClientConnInterface, config map[string]string) (inventory.Inventory, error) {
+func NewGrpcInventory(ctx context.Context, client grpc.ClientConnInterface, config map[string]string) (integration.Inventory, error) {
 	inv := &grpcInventoryClient{
-		client: sdk.NewInventoryClient(client),
+		client: inventory.NewInventoryClient(client),
 	}
 
 	if err := inv.Init(ctx, config); err != nil {
@@ -51,7 +29,7 @@ func NewGrpcInventory(ctx context.Context, client grpc.ClientConnInterface, conf
 }
 
 func (inv *grpcInventoryClient) Init(ctx context.Context, config map[string]string) error {
-	_, err := inv.client.Init(ctx, &sdk.InitRequest{
+	_, err := inv.client.Init(ctx, &inventory.InitRequest{
 		Config: config,
 	})
 
@@ -63,7 +41,7 @@ func (inv *grpcInventoryClient) Init(ctx context.Context, config map[string]stri
 }
 
 func (inv *grpcInventoryClient) Close(ctx context.Context) error {
-	_, err := inv.client.Close(ctx, &sdk.CloseRequest{})
+	_, err := inv.client.Close(ctx, &inventory.CloseRequest{})
 	if err != nil {
 		return unwrap(err)
 	}
@@ -71,10 +49,10 @@ func (inv *grpcInventoryClient) Close(ctx context.Context) error {
 	return nil
 }
 
-func (inv *grpcInventoryClient) List(ctx context.Context, entries chan<- *inventory.InventoryEntry) error {
+func (inv *grpcInventoryClient) List(ctx context.Context, entries chan<- *integration.InventoryEntry) error {
 	defer close(entries)
 
-	stream, err := inv.client.List(ctx, &sdk.ListRequest{})
+	stream, err := inv.client.List(ctx, &inventory.ListRequest{})
 	if err != nil {
 		return unwrap(err)
 	}
@@ -92,7 +70,7 @@ func (inv *grpcInventoryClient) List(ctx context.Context, entries chan<- *invent
 			return fmt.Errorf("expected a record")
 		}
 
-		entry := &inventory.InventoryEntry{
+		entry := &integration.InventoryEntry{
 			Class:    pkg.ResourceClass(res.Entry.Class),
 			SubClass: pkg.ResourceSubClass(res.Entry.Subclass),
 			Tags:     res.Entry.Tags,
@@ -102,12 +80,12 @@ func (inv *grpcInventoryClient) List(ctx context.Context, entries chan<- *invent
 			Service:  res.Entry.Service,
 			Resource: res.Entry.Resource,
 			Details:  res.Entry.Details,
-			Country:  inventory.CountryOf(res.Entry.GetCountry()),
+			Country:  integration.CountryOf(res.Entry.GetCountry()),
 		}
 
 		for _, e := range res.Entry.GetEndpoints() {
-			entry.Endpoints = append(entry.Endpoints, inventory.HostEndpoint{
-				Type:       inventory.EndpointType(e.Type),
+			entry.Endpoints = append(entry.Endpoints, integration.HostEndpoint{
+				Type:       integration.EndpointType(e.Type),
 				Endpoint:   e.Endpoint,
 				Attributes: e.Attributes,
 			})

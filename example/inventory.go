@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/PlakarKorp/go-inventory-sdk/inventory"
+	"github.com/PlakarKorp/integration-sdk"
 	"github.com/PlakarKorp/pkg"
 	"golang.org/x/sync/errgroup"
 )
@@ -13,7 +13,7 @@ type example struct {
 	// ...
 }
 
-func NewInventory(ctx context.Context, params map[string]string) (inventory.Inventory, error) {
+func NewInventory(ctx context.Context, params map[string]string) (integration.Inventory, error) {
 	var ex example
 
 	// inspect and consume params
@@ -30,7 +30,7 @@ func NewInventory(ctx context.Context, params map[string]string) (inventory.Inve
 	return &ex, nil
 }
 
-func (ex *example) List(ctx context.Context, resources chan<- *inventory.InventoryEntry) error {
+func (ex *example) List(ctx context.Context, resources chan<- *integration.InventoryEntry) error {
 	defer close(resources)
 
 	wg, ctx := errgroup.WithContext(ctx)
@@ -41,9 +41,9 @@ func (ex *example) List(ctx context.Context, resources chan<- *inventory.Invento
 	return wg.Wait()
 }
 
-func (ex *example) listFoos(ctx context.Context, resources chan<- *inventory.InventoryEntry) error {
+func (ex *example) listFoos(ctx context.Context, resources chan<- *integration.InventoryEntry) error {
 	for i := range 3 {
-		resources <- &inventory.InventoryEntry{
+		resources <- &integration.InventoryEntry{
 			Class:    pkg.ResourceClassCompute,
 			SubClass: pkg.ResourceSubClassUnknown,
 			Tags:     []string{"foo", "bar", "baz"},
@@ -51,9 +51,9 @@ func (ex *example) listFoos(ctx context.Context, resources chan<- *inventory.Inv
 			Name:     fmt.Sprintf("example-foo-%d", i),
 			Region:   "eu",
 			Service:  "foo",
-			Country:  inventory.Country("FR"),
-			Endpoints: []inventory.HostEndpoint{{
-				Type:     inventory.EndpointIdentifier,
+			Country:  integration.Country("FR"),
+			Endpoints: []integration.HostEndpoint{{
+				Type:     integration.EndpointIdentifier,
 				Endpoint: fmt.Sprintf("foo-%d", i),
 			}},
 		}
@@ -61,7 +61,7 @@ func (ex *example) listFoos(ctx context.Context, resources chan<- *inventory.Inv
 	return nil
 }
 
-func (ex *example) listBars(ctx context.Context, resources chan<- *inventory.InventoryEntry) error {
+func (ex *example) listBars(ctx context.Context, resources chan<- *integration.InventoryEntry) error {
 	// TODO
 	return nil
 }

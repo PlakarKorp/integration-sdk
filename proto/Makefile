@@ -10,6 +10,7 @@ gen: connectors.pb.go
 	${MAKE} -C exporter
 	${MAKE} -C importer
 	${MAKE} -C storage
+	${MAKE} -C inventory
 
 .PHONY: all build gen
 

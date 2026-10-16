@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-option go_package = "github.com/PlakarKorp/go-inventory-sdk;sdk";
+option go_package = "github.com/PlakarKorp/integration-sdk/proto/inventory";
 
 package inventory;
 
