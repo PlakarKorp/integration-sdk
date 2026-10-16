@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Example Inventory config",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {
+    "param1": {
+      "type": "string",
+      "description": "Parameter 1"
+    },
+    "param2": {
+      "type": "string",
+      "description": "Parameter 2"
+    }
+  }
+}

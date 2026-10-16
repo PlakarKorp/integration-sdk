@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+option go_package = "github.com/PlakarKorp/go-inventory-sdk;sdk";
+
+package inventory;
+
+service Inventory {
+  rpc Init(InitRequest) returns (InitResponse);
+  rpc List(ListRequest) returns (stream ListResponse);
+  rpc Close(CloseRequest) returns (CloseResponse);
+}
+
+message InitRequest {
+  map<string, string> config = 1;
+}
+
+message InitResponse {}
+
+message HostEndpoint {
+  string type = 1;
+  string endpoint = 2;
+  map<string, string> attributes = 3;
+}
+
+message InventoryEntry {
+  string class = 1;
+  string subclass = 2;
+  repeated string tags = 3;
+  string urn = 4;
+  string name = 5;
+  string region = 6;
+  string service = 7;
+  string resource = 8;
+  bytes details = 9;
+  repeated HostEndpoint endpoints = 10;
+
+  // Where this resource physically sits, as an ISO 3166-1 alpha-2 code.
+  // Empty means unknown -- never "same as the inventory", which has no country
+  // of its own.
+  string country = 11;
+}
+
+message ListRequest {
+}
+
+message ListResponse {
+  InventoryEntry entry = 1;
+}
+
+message CloseRequest  {}
+
+message CloseResponse {}

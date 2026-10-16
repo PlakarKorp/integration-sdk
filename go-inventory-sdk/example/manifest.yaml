@@ -1,0 +1,9 @@
+name: example
+display_name: Example
+description: Example Inc Inventory
+homepage: https://github.com/PlakarKorp/go-inventory-sdk/tree/main/example
+license: ISC
+connectors:
+  - type: inventory
+    executable: example-inventory
+    validator: ./cmd/example-inventory/schema.json
