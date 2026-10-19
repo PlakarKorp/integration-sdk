@@ -15,7 +15,7 @@ type rot13 struct {
 	rot int
 }
 
-func newrot13(ctx context.Context, opts map[string]string) (integration.Provider, error) {
+func newrot13(ctx context.Context, opts map[string]string) (integration.SecretProvider, error) {
 	r := rot13{13}
 	if s, ok := opts["n"]; ok {
 		n, err := strconv.Atoi(s)
@@ -54,5 +54,5 @@ func (r *rot13) Close(ctx context.Context) error {
 }
 
 func main() {
-	server.Entrypoint(os.Args, newrot13)
+	server.EntrypointSecretProvider(os.Args, newrot13)
 }

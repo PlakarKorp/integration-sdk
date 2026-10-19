@@ -14,13 +14,13 @@ import (
 )
 
 type grpcSecretProvider struct {
-	integration.Provider
+	integration.SecretProvider
 
 	conn *grpc.ClientConn
 }
 
 func (g *grpcSecretProvider) Close(ctx context.Context) error {
-	ret := g.Provider.Close(ctx)
+	ret := g.SecretProvider.Close(ctx)
 	if err := g.conn.Close(); err != nil {
 		if ret == nil {
 			ret = err
@@ -81,7 +81,7 @@ func spawn(ctx context.Context, exe string, args []string) (*grpc.ClientConn, er
 	return client, nil
 }
 
-func ExecSecretProvider(ctx context.Context, params map[string]string, exe string, args []string) (integration.Provider, error) {
+func ExecSecretProvider(ctx context.Context, params map[string]string, exe string, args []string) (integration.SecretProvider, error) {
 	conn, err := spawn(ctx, exe, args)
 	if err != nil {
 		return nil, err
