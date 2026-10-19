@@ -11,6 +11,7 @@ gen: connectors.pb.go
 	${MAKE} -C importer
 	${MAKE} -C storage
 	${MAKE} -C inventory
+	${MAKE} -C secret
 
 .PHONY: all build gen
 

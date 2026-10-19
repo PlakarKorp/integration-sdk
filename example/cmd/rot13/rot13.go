@@ -7,14 +7,15 @@ import (
 	"strconv"
 	"strings"
 
-	sdk "github.com/PlakarKorp/go-secret-sdk"
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/server"
 )
 
 type rot13 struct {
 	rot int
 }
 
-func newrot13(ctx context.Context, opts map[string]string) (sdk.Provider, error) {
+func newrot13(ctx context.Context, opts map[string]string) (integration.Provider, error) {
 	r := rot13{13}
 	if s, ok := opts["n"]; ok {
 		n, err := strconv.Atoi(s)
@@ -53,5 +54,5 @@ func (r *rot13) Close(ctx context.Context) error {
 }
 
 func main() {
-	sdk.Entrypoint(os.Args, newrot13)
+	server.Entrypoint(os.Args, newrot13)
 }

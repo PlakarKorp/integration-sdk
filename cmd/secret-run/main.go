@@ -10,8 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	sdk "github.com/PlakarKorp/go-secret-sdk"
 )
 
 func usage() {
@@ -89,7 +87,7 @@ func main() {
 	bin := flag.Arg(0)
 	path := flag.Arg(1)
 	args := flag.Args()[2:]
-	sp, err := sdk.ExecSecretProvider(ctx, config, bin, args)
+	sp, err := ExecSecretProvider(ctx, config, bin, args)
 	if err != nil {
 		log.Fatalln("Failed to exec secret provider:", err)
 	}

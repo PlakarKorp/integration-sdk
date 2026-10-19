@@ -1,4 +1,4 @@
-package sdk
+package main
 
 import (
 	"net"

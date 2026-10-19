@@ -4,7 +4,7 @@
 // - protoc             v7.35.1
 // source: secret.proto
 
-package sdk
+package secret
 
 import (
 	context "context"
