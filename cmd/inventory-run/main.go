@@ -6,15 +6,33 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/PlakarKorp/go-inventory-sdk/inventory"
-	sdk "github.com/PlakarKorp/go-inventory-sdk/sdk/client"
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/client"
 	"github.com/PlakarKorp/pkg"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
+
+type grpcinventory struct {
+	integration.Inventory
+	conn *grpc.ClientConn
+}
+
+func (g *grpcinventory) Close(ctx context.Context) error {
+	ret := g.Inventory.Close(ctx)
+	if err := g.conn.Close(); err != nil {
+		if ret == nil {
+			ret = err
+		}
+	}
+	return ret
+}
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: %s [-config file] [-o key=value] inventory-cmd\n",
@@ -87,7 +105,7 @@ func main() {
 	ctx := context.Background()
 	bin := flag.Arg(0)
 	args := flag.Args()[1:]
-	inv, err := sdk.ExecInventory(ctx, config, bin, args)
+	inv, err := ExecInventory(ctx, config, bin, args)
 	if err != nil {
 		log.Fatalln("ConnectPlugin failed:", err)
 	}
@@ -104,8 +122,8 @@ func show(v any) string {
 	return string(buf)
 }
 
-func run(ctx context.Context, inv inventory.Inventory) {
-	c := make(chan *inventory.InventoryEntry)
+func run(ctx context.Context, inv integration.Inventory) {
+	c := make(chan *integration.InventoryEntry)
 	done := make(chan struct{})
 
 	go func() {
@@ -122,4 +140,74 @@ func run(ctx context.Context, inv inventory.Inventory) {
 	}
 
 	<-done
+}
+
+func spawn(ctx context.Context, exe string, args []string) (*grpc.ClientConn, error) {
+	cmd := exec.CommandContext(ctx, exe, args...)
+	cmd.Stderr = os.Stderr // let child's stderr pass through for logging
+
+	wr, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	rd, err := cmd.StdoutPipe()
+	if err != nil {
+		wr.Close()
+		return nil, err
+	}
+
+	stdin, ok := rd.(*os.File)
+	if !ok {
+		wr.Close()
+		rd.Close()
+		reason := "stdin is not a file"
+		return nil, fmt.Errorf("failed to spawn plugin: %s", reason)
+	}
+
+	stdout, ok := wr.(*os.File)
+	if !ok {
+		wr.Close()
+		rd.Close()
+		reason := "stdout is not a file"
+		return nil, fmt.Errorf("failed to spawn plugin: %s", reason)
+	}
+
+	if err := cmd.Start(); err != nil {
+		wr.Close()
+		rd.Close()
+		return nil, err
+	}
+
+	conn := NewStdioConn(stdin, stdout, cmd)
+
+	client, err := grpc.NewClient("127.0.0.1:0",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return conn, nil
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithIdleTimeout(0),
+	)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
+func ExecInventory(ctx context.Context, params map[string]string, exe string, args []string) (integration.Inventory, error) {
+	conn, err := spawn(ctx, exe, args)
+	if err != nil {
+		return nil, err
+	}
+
+	inv, err := client.NewGrpcInventory(ctx, conn, params)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	return &grpcinventory{
+		Inventory: inv,
+		conn:      conn,
+	}, nil
 }
