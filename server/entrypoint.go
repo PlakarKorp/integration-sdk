@@ -19,7 +19,7 @@ func checkArgs(args []string) {
 	}
 }
 
-func EntrypointImporter(ctx context.Context, args []string, ctor importer.ImporterFn) {
+func EntrypointImporter(ctx context.Context, ctor importer.ImporterFn, args []string) {
 	checkArgs(args)
 
 	if err := RunImporter(ctx, ctor); err != nil {
@@ -32,7 +32,7 @@ func EntrypointImporter(ctx context.Context, args []string, ctor importer.Import
 	os.Exit(0)
 }
 
-func EntrypointExporter(ctx context.Context, args []string, ctor exporter.ExporterFn) {
+func EntrypointExporter(ctx context.Context, ctor exporter.ExporterFn, args []string) {
 	checkArgs(args)
 
 	if err := RunExporter(ctx, ctor); err != nil {
@@ -45,7 +45,7 @@ func EntrypointExporter(ctx context.Context, args []string, ctor exporter.Export
 	os.Exit(0)
 }
 
-func EntrypointStorage(ctx context.Context, args []string, ctor storage.StoreFn) {
+func EntrypointStorage(ctx context.Context, ctor storage.StoreFn, args []string) {
 	checkArgs(args)
 
 	if err := RunStorage(ctx, ctor); err != nil {
@@ -58,7 +58,7 @@ func EntrypointStorage(ctx context.Context, args []string, ctor storage.StoreFn)
 	os.Exit(0)
 }
 
-func EntrypointInventory(ctx context.Context, args []string, constructor InventoryFn) {
+func EntrypointInventory(ctx context.Context, constructor InventoryFn, args []string) {
 	if len(args) != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s\n", args[0])
 		os.Exit(1)
@@ -72,7 +72,7 @@ func EntrypointInventory(ctx context.Context, args []string, constructor Invento
 	os.Exit(0)
 }
 
-func EntrypointSecretProvider(args []string, constructor SecretProviderFn) {
+func EntrypointSecretProvider(constructor SecretProviderFn, args []string) {
 	if len(args) != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s\n", args[0])
 		os.Exit(1)
