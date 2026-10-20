@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/PlakarKorp/integration-sdk/stdioconn"
 	"google.golang.org/grpc"
 )
 
@@ -19,11 +20,9 @@ const ListenEnv = "PLAKAR_PLUGIN_LISTEN"
 func initListener() (net.Listener, io.Closer, error) {
 	addr := os.Getenv(ListenEnv)
 	if addr == "" {
-		conn, listener, err := InitConn()
-		if err != nil {
-			return nil, nil, err
-		}
-		return listener, conn, nil
+		ch := make(chan struct{})
+		conn := stdioconn.New(os.Stdin, os.Stdout, stdioconn.WithOnClose(func() { close(ch) }))
+		return &singleConnListener{notify: ch, conn: conn}, conn, nil
 	}
 
 	path, ok := strings.CutPrefix(addr, "unix://")
