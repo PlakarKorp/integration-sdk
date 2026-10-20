@@ -3,6 +3,7 @@
 package stdioconn
 
 import (
+	"errors"
 	"net"
 	"os"
 	"os/exec"
@@ -103,3 +104,38 @@ func (c *Conn) SetReadDeadline(t time.Time) error { return c.stdin.SetReadDeadli
 
 // SetWriteDeadline sets the deadline on stdout.
 func (c *Conn) SetWriteDeadline(t time.Time) error { return c.stdout.SetWriteDeadline(t) }
+
+// Spawn starts cmd with its standard input and output connected to the
+// returned Conn.  Close waits for cmd to exit.  Stdin and Stdout should
+// not be already set.
+func Spawn(cmd *exec.Cmd) (*Conn, error) {
+	if cmd.Stdin != nil || cmd.Stdout != nil {
+		return nil, errors.New("stdin or stdout already set")
+	}
+
+	childIn, parentOut, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	parentIn, childOut, err := os.Pipe()
+	if err != nil {
+		childIn.Close()
+		parentOut.Close()
+		return nil, err
+	}
+
+	cmd.Stdin = childIn
+	cmd.Stdout = childOut
+	err = cmd.Start()
+
+	// these were dup'd in start() already.
+	childIn.Close()
+	childOut.Close()
+
+	if err != nil {
+		parentIn.Close()
+		parentOut.Close()
+		return nil, err
+	}
+	return New(parentIn, parentOut, WithCmd(cmd)), nil
+}
