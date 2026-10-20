@@ -16,7 +16,7 @@ type grpcInventoryClient struct {
 	client inventory.InventoryClient
 }
 
-func NewGrpcInventory(ctx context.Context, client grpc.ClientConnInterface, config map[string]string) (integration.Inventory, error) {
+func NewInventory(ctx context.Context, client grpc.ClientConnInterface, config map[string]string) (integration.Inventory, error) {
 	inv := &grpcInventoryClient{
 		client: inventory.NewInventoryClient(client),
 	}

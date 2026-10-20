@@ -172,7 +172,7 @@ func ExecInventory(ctx context.Context, params map[string]string, exe string, ar
 		return nil, err
 	}
 
-	inv, err := client.NewGrpcInventory(ctx, conn, params)
+	inv, err := client.NewInventory(ctx, conn, params)
 	if err != nil {
 		conn.Close()
 		return nil, err
