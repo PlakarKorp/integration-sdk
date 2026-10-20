@@ -3,7 +3,9 @@ package server
 import (
 	"io"
 	"net"
-	"sync"
+	"os"
+
+	"github.com/PlakarKorp/integration-sdk/stdioconn"
 )
 
 // singleConnListener is a net.Listener that accepts only one connection.
@@ -36,19 +38,8 @@ func (l *singleConnListener) Addr() net.Addr {
 // InitConn initializes the gRPC socket connection from stdio.
 // It returns the net.Conn and a Listener wrapping it.
 func InitConn() (net.Conn, net.Listener, error) {
-	conn := NewStdioConn()
-
 	ch := make(chan struct{})
-	var mtx sync.Mutex
-	conn.onclose = func() {
-		mtx.Lock()
-		if ch != nil {
-			close(ch)
-			ch = nil
-		}
-		mtx.Unlock()
-	}
-
+	conn := stdioconn.New(os.Stdin, os.Stdout, stdioconn.WithOnClose(func() { close(ch) }))
 	listener := &singleConnListener{notify: ch, conn: conn}
 	return conn, listener, nil
 }
