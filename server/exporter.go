@@ -15,6 +15,8 @@ import (
 	"github.com/PlakarKorp/kloset/location"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type exporterPluginServer struct {
@@ -35,6 +37,10 @@ var (
 )
 
 func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+	if req.Options == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing options")
+	}
+
 	opts := connectors.Options{
 		MaxConcurrency:  int(req.Options.Maxconcurrency),
 		Hostname:        req.Options.Hostname,

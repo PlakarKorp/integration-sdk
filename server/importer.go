@@ -16,6 +16,8 @@ import (
 	"github.com/PlakarKorp/kloset/objects"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type importerPluginServer struct {
@@ -29,6 +31,10 @@ type importerPluginServer struct {
 }
 
 func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+	if req.Options == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing options")
+	}
+
 	opts := connectors.Options{
 		Hostname:        req.Options.Hostname,
 		OperatingSystem: req.Options.Os,
@@ -139,6 +145,10 @@ func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto
 }
 
 func (plugin *importerPluginServer) Open(req *proto.OpenRequest, stream grpc.ServerStreamingServer[proto.OpenResponse]) error {
+	if req.Record == nil {
+		return status.Error(codes.InvalidArgument, "missing record")
+	}
+
 	rd := plugin.readers.Get(&connectors.Record{
 		Pathname:  req.Record.Pathname,
 		IsXattr:   req.Record.IsXattr,
