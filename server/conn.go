@@ -4,7 +4,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync"
 
 	"github.com/PlakarKorp/integration-sdk/stdioconn"
 )
@@ -40,17 +39,7 @@ func (l *singleConnListener) Addr() net.Addr {
 // It returns the net.Conn and a Listener wrapping it.
 func InitConn() (net.Conn, net.Listener, error) {
 	ch := make(chan struct{})
-	var mtx sync.Mutex
-	onclose := func() {
-		mtx.Lock()
-		if ch != nil {
-			close(ch)
-			ch = nil
-		}
-		mtx.Unlock()
-	}
-
-	conn := stdioconn.New(os.Stdin, os.Stdout, nil, onclose)
+	conn := stdioconn.New(os.Stdin, os.Stdout, nil, func() { close(ch) })
 	listener := &singleConnListener{notify: ch, conn: conn}
 	return conn, listener, nil
 }
