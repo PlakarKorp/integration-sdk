@@ -36,6 +36,7 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 		CWD:             req.Options.Cwd,
 		MaxConcurrency:  int(req.Options.Maxconcurrency),
 		Excludes:        req.Options.Excludes,
+		NoXattr:         req.Options.Noxattr,
 	}
 
 	imp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)

@@ -41,6 +41,8 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 		OperatingSystem: req.Options.Os,
 		Architecture:    req.Options.Arch,
 		CWD:             req.Options.Cwd,
+		Excludes:        req.Options.Excludes,
+		NoXattr:         req.Options.Noxattr,
 	}
 
 	exp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
