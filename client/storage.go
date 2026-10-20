@@ -179,7 +179,7 @@ func (g *grpcChunkReader) Close() error {
 		if errors.Is(err, io.EOF) {
 			return nil
 		} else if err != nil {
-			return err
+			return unwrap(err)
 		}
 	}
 }

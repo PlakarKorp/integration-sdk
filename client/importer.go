@@ -120,7 +120,7 @@ func (g *Importer) open(parentctx context.Context, record *connectors.Record) (i
 	})
 	if err != nil {
 		cancel() // possibly not needed, but makes LSP happy
-		return nil, err
+		return nil, unwrap(err)
 	}
 
 	return &streamReader{
@@ -167,7 +167,7 @@ func (s *streamReader) Close() error {
 		if errors.Is(err, io.EOF) {
 			return nil
 		} else if err != nil {
-			return err
+			return unwrap(err)
 		}
 	}
 }
@@ -230,7 +230,7 @@ func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportReque
 func (g *Importer) Import(ctx context.Context, records chan<- *connectors.Record, results <-chan *connectors.Result) error {
 	stream, err := g.client.Import(ctx)
 	if err != nil {
-		return err
+		return unwrap(err)
 	}
 
 	var wg errgroup.Group

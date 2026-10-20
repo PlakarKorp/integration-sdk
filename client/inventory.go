@@ -63,7 +63,7 @@ func (inv *grpcInventoryClient) List(ctx context.Context, entries chan<- *integr
 			if errors.Is(err, io.EOF) {
 				err = nil
 			}
-			return err
+			return unwrap(err)
 		}
 
 		if res == nil || res.Entry == nil {
