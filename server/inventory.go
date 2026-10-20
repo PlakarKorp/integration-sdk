@@ -18,21 +18,26 @@ type grpcInventoryServer struct {
 	inventory.UnimplementedInventoryServer
 
 	maxconcurrency int
-	inventory      integration.Inventory
+	instance       instance[integration.Inventory]
 	constructor    InventoryFn
 }
 
 func (g *grpcInventoryServer) Init(ctx context.Context, req *inventory.InitRequest) (*inventory.InitResponse, error) {
-	inv, err := g.constructor(ctx, req.Config)
+	_, err := g.instance.init(func() (integration.Inventory, error) {
+		return g.constructor(ctx, req.Config)
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	g.inventory = inv
 	return &inventory.InitResponse{}, nil
 }
 
 func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.ServerStreamingServer[inventory.ListResponse]) error {
+	inv, err := g.instance.get()
+	if err != nil {
+		return err
+	}
+
 	entries := make(chan *integration.InventoryEntry, g.maxconcurrency)
 	ctx, cancel := context.WithCancelCause(stream.Context())
 	defer cancel(nil) // needed?
@@ -76,7 +81,7 @@ func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.Serve
 		return nil
 	})
 
-	err := g.inventory.List(ctx, entries)
+	err = inv.List(ctx, entries)
 	wgerr := wg.Wait()
 
 	if err != nil {
@@ -90,7 +95,12 @@ func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.Serve
 }
 
 func (g *grpcInventoryServer) Close(ctx context.Context, _ *inventory.CloseRequest) (*inventory.CloseResponse, error) {
-	if err := g.inventory.Close(ctx); err != nil {
+	inv, err := g.instance.take()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := inv.Close(ctx); err != nil {
 		return nil, err
 	}
 	return &inventory.CloseResponse{}, nil

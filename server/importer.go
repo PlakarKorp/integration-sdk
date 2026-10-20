@@ -22,7 +22,7 @@ import (
 
 type importerPluginServer struct {
 	constructor    importer.ImporterFn
-	importer       importer.Importer
+	instance       instance[importer.Importer]
 	flags          location.Flags
 	maxconcurrency int
 	readers        *conn.HoldingReaders
@@ -45,15 +45,20 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 		NoXattr:         req.Options.Noxattr,
 	}
 
-	imp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
+	imp, err := plugin.instance.init(func() (importer.Importer, error) {
+		imp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
+		if err != nil {
+			return nil, err
+		}
+		plugin.flags = imp.Flags()
+		plugin.maxconcurrency = int(req.Options.Maxconcurrency)
+		plugin.readers = conn.NewHoldingReaders()
+		return imp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	plugin.importer = imp
-	plugin.flags = imp.Flags()
-	plugin.maxconcurrency = int(req.Options.Maxconcurrency)
-	plugin.readers = conn.NewHoldingReaders()
 	return &proto.InitResponse{
 		Origin: imp.Origin(),
 		Type:   imp.Type(),
@@ -63,7 +68,11 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 }
 
 func (plugin *importerPluginServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
-	return nil, plugin.importer.Ping(ctx)
+	imp, err := plugin.instance.get()
+	if err != nil {
+		return nil, err
+	}
+	return nil, imp.Ping(ctx)
 }
 
 func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], records <-chan *connectors.Record) error {
@@ -114,6 +123,11 @@ func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServ
 }
 
 func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse]) error {
+	imp, err := plugin.instance.get()
+	if err != nil {
+		return err
+	}
+
 	var (
 		size    = plugin.maxconcurrency
 		records = make(chan *connectors.Record, size)
@@ -137,7 +151,7 @@ func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto
 		return plugin.receiveResults(stream, results)
 	})
 
-	if err := plugin.importer.Import(ctx, records, results); err != nil {
+	if err := imp.Import(ctx, records, results); err != nil {
 		return err
 	}
 
@@ -147,6 +161,10 @@ func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto
 func (plugin *importerPluginServer) Open(req *proto.OpenRequest, stream grpc.ServerStreamingServer[proto.OpenResponse]) error {
 	if req.Record == nil {
 		return status.Error(codes.InvalidArgument, "missing record")
+	}
+
+	if _, err := plugin.instance.get(); err != nil {
+		return err
 	}
 
 	rd := plugin.readers.Get(&connectors.Record{
@@ -182,9 +200,14 @@ func (plugin *importerPluginServer) Open(req *proto.OpenRequest, stream grpc.Ser
 }
 
 func (plugin *importerPluginServer) Close(ctx context.Context, req *proto.CloseRequest) (*proto.CloseResponse, error) {
+	imp, err := plugin.instance.take()
+	if err != nil {
+		return nil, err
+	}
+
 	plugin.readers.Close()
 
-	if err := plugin.importer.Close(ctx); err != nil {
+	if err := imp.Close(ctx); err != nil {
 		return nil, err
 	}
 	return &proto.CloseResponse{}, nil
