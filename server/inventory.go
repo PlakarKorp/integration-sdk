@@ -22,12 +22,6 @@ type grpcInventoryServer struct {
 	constructor    InventoryFn
 }
 
-func NewGrpcInventoryServer(constructor InventoryFn) *grpcInventoryServer {
-	return &grpcInventoryServer{
-		constructor: constructor,
-	}
-}
-
 func (g *grpcInventoryServer) Init(ctx context.Context, req *inventory.InitRequest) (*inventory.InitResponse, error) {
 	inv, err := g.constructor(ctx, req.Config)
 	if err != nil {
@@ -114,7 +108,9 @@ func RunInventory(ctx context.Context, constructor InventoryFn) error {
 
 func RunInventoryOn(ctx context.Context, constructor InventoryFn, listener net.Listener) error {
 	server := grpc.NewServer()
-	inventory.RegisterInventoryServer(server, NewGrpcInventoryServer(constructor))
+	inventory.RegisterInventoryServer(server, &grpcInventoryServer{
+		constructor: constructor,
+	})
 	if err := server.Serve(listener); err != nil {
 		return err
 	}

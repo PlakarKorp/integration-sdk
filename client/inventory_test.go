@@ -55,7 +55,7 @@ func dialInventory(t *testing.T, srv *fakeInventoryServer) integration.Inventory
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	inv, err := NewGrpcInventory(context.Background(), conn, nil)
+	inv, err := NewInventory(context.Background(), conn, nil)
 	if err != nil {
 		t.Fatalf("init: %v", err)
 	}

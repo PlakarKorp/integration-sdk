@@ -37,9 +37,9 @@ func dialInventory(t *testing.T, inv integration.Inventory) proto.InventoryClien
 
 	lis := bufconn.Listen(1024 * 1024)
 	srv := grpc.NewServer()
-	proto.RegisterInventoryServer(srv, NewGrpcInventoryServer(
-		func(context.Context, map[string]string) (integration.Inventory, error) { return inv, nil },
-	))
+	proto.RegisterInventoryServer(srv, &grpcInventoryServer{
+		constructor: func(context.Context, map[string]string) (integration.Inventory, error) { return inv, nil },
+	})
 
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
