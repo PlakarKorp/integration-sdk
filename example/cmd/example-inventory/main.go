@@ -9,5 +9,5 @@ import (
 )
 
 func main() {
-	server.EntrypointInventory(context.Background(), os.Args, example.NewInventory)
+	server.EntrypointInventory(context.Background(), example.NewInventory, os.Args)
 }

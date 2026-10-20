@@ -54,5 +54,5 @@ func (r *rot13) Close(ctx context.Context) error {
 }
 
 func main() {
-	server.EntrypointSecretProvider(os.Args, newrot13)
+	server.EntrypointSecretProvider(newrot13, os.Args)
 }
