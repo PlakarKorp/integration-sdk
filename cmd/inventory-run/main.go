@@ -147,39 +147,10 @@ func spawn(ctx context.Context, exe string, args []string) (*grpc.ClientConn, er
 	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Stderr = os.Stderr // let child's stderr pass through for logging
 
-	wr, err := cmd.StdinPipe()
+	conn, err := stdioconn.Spawn(cmd)
 	if err != nil {
 		return nil, err
 	}
-	rd, err := cmd.StdoutPipe()
-	if err != nil {
-		wr.Close()
-		return nil, err
-	}
-
-	stdin, ok := rd.(*os.File)
-	if !ok {
-		wr.Close()
-		rd.Close()
-		reason := "stdin is not a file"
-		return nil, fmt.Errorf("failed to spawn plugin: %s", reason)
-	}
-
-	stdout, ok := wr.(*os.File)
-	if !ok {
-		wr.Close()
-		rd.Close()
-		reason := "stdout is not a file"
-		return nil, fmt.Errorf("failed to spawn plugin: %s", reason)
-	}
-
-	if err := cmd.Start(); err != nil {
-		wr.Close()
-		rd.Close()
-		return nil, err
-	}
-
-	conn := stdioconn.New(stdin, stdout, stdioconn.WithCmd(cmd))
 
 	client, err := grpc.NewClient("127.0.0.1:0",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {

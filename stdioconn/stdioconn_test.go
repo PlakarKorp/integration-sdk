@@ -27,13 +27,16 @@ func pipes(t *testing.T) (stdin, stdout, peerW, peerR *os.File) {
 	return inR, outW, inW, outR
 }
 
+func sh(script string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/c", script)
+	}
+	return exec.Command("sh", "-c", script)
+}
+
 func helperCmd(t *testing.T, code int) *exec.Cmd {
 	t.Helper()
-	exit := fmt.Sprintf("exit %d", code)
-	cmd := exec.Command("sh", "-c", exit)
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", exit)
-	}
+	cmd := sh(fmt.Sprintf("exit %d", code))
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -125,5 +128,47 @@ func TestClose(t *testing.T) {
 				t.Errorf("Write after Close: got %v, want %v", err, os.ErrClosed)
 			}
 		})
+	}
+}
+
+func cat() *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("findstr", "^")
+	}
+	return exec.Command("cat")
+}
+
+func TestSpawn(t *testing.T) {
+	conn, err := Spawn(cat())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := conn.Write([]byte("ping\n")); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(conn, buf); err != nil {
+		t.Fatal(err)
+	}
+	if string(buf) != "ping" {
+		t.Errorf("read %q, want %q", buf, "ping")
+	}
+
+	// closing our end of the pipe is what lets the child exit.
+	if err := conn.Close(); err != nil {
+		t.Errorf("Close: %v", err)
+	}
+}
+
+func TestSpawnExitStatus(t *testing.T) {
+	conn, err := Spawn(sh("exit 3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var exitErr *exec.ExitError
+	if err := conn.Close(); !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
+		t.Errorf("Close: got %v, want exit status 3", err)
 	}
 }
