@@ -69,10 +69,10 @@ func EntrypointInventory(ctx context.Context, constructor InventoryFn, args []st
 	os.Exit(0)
 }
 
-func EntrypointSecretProvider(constructor SecretProviderFn, args []string) {
+func EntrypointSecretProvider(ctx context.Context, constructor SecretProviderFn, args []string) {
 	checkArgs(args)
 
-	if err := RunSecretProvider(constructor); err != nil && !errors.Is(err, io.EOF) {
+	if err := RunSecretProvider(ctx, constructor); err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "provider plugin failed unexpectedly: %s\n", err)
 		os.Exit(1)
 	}

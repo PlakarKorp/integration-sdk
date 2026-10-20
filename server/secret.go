@@ -51,21 +51,32 @@ func (g *secretServer) Close(ctx context.Context, req *secret.CloseRequest) (*se
 	return &secret.CloseResponse{}, nil
 }
 
-func RunSecretProvider(constructor SecretProviderFn) error {
-	conn, listener, err := InitConn()
+func RunSecretProvider(ctx context.Context, constructor SecretProviderFn) error {
+	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
 	}
-	defer conn.Close()
+	defer closer.Close()
 
-	return RunSecretProviderOn(constructor, listener)
+	return RunSecretProviderOn(ctx, constructor, listener)
 }
 
-func RunSecretProviderOn(constructor SecretProviderFn, listener net.Listener) error {
+func RunSecretProviderOn(ctx context.Context, constructor SecretProviderFn, listener net.Listener) error {
 	server := grpc.NewServer()
 	secret.RegisterSecretProviderServer(server, &secretServer{
 		constructor: constructor,
 	})
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			server.Stop()
+		case <-done:
+		}
+	}()
 
 	return server.Serve(listener)
 }
