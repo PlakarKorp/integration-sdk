@@ -59,6 +59,10 @@ func RecordToProto(record *connectors.Record) *Record {
 }
 
 func RecordFromProto(record *Record) (*connectors.Record, error) {
+	if record == nil {
+		return nil, fmt.Errorf("%w: missing record", ErrInvalidRecord)
+	}
+
 	var err error
 	if record.Error != "" {
 		err = fmt.Errorf("%s", record.Error)
@@ -116,6 +120,10 @@ func ResultToProto(result *connectors.Result) *Result {
 }
 
 func ResultFromProto(result *Result) (*connectors.Result, error) {
+	if result == nil {
+		return nil, fmt.Errorf("%w: missing result", ErrInvalidRecord)
+	}
+
 	record, err := RecordFromProto(result.Header)
 	if err != nil {
 		return nil, err
