@@ -25,16 +25,29 @@ type Conn struct {
 	cmd     *exec.Cmd
 }
 
-// New returns a Conn reading from stdin and writing to stdout.  If cmd
-// is not nil, Close waits for it to exit.  If onclose is not nil, Close
-// calls it before closing the files.
-func New(stdin, stdout *os.File, cmd *exec.Cmd, onclose func()) *Conn {
-	return &Conn{
-		stdin:   stdin,
-		stdout:  stdout,
-		onclose: onclose,
-		cmd:     cmd,
+// Option configures a Conn.
+type Option func(*Conn)
+
+// WithCmd makes Close wait for cmd to exit and return its error.
+func WithCmd(cmd *exec.Cmd) Option {
+	return func(c *Conn) { c.cmd = cmd }
+}
+
+// WithOnClose makes Close call fn, once, before closing the files.
+func WithOnClose(fn func()) Option {
+	return func(c *Conn) { c.onclose = fn }
+}
+
+// New returns a Conn reading from stdin and writing to stdout.
+func New(stdin, stdout *os.File, opts ...Option) *Conn {
+	c := &Conn{
+		stdin:  stdin,
+		stdout: stdout,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // Read reads from stdin.

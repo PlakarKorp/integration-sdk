@@ -179,7 +179,7 @@ func spawn(ctx context.Context, exe string, args []string) (*grpc.ClientConn, er
 		return nil, err
 	}
 
-	conn := stdioconn.New(stdin, stdout, cmd, nil)
+	conn := stdioconn.New(stdin, stdout, stdioconn.WithCmd(cmd))
 
 	client, err := grpc.NewClient("127.0.0.1:0",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {

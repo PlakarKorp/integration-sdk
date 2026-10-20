@@ -39,7 +39,7 @@ func (l *singleConnListener) Addr() net.Addr {
 // It returns the net.Conn and a Listener wrapping it.
 func InitConn() (net.Conn, net.Listener, error) {
 	ch := make(chan struct{})
-	conn := stdioconn.New(os.Stdin, os.Stdout, nil, func() { close(ch) })
+	conn := stdioconn.New(os.Stdin, os.Stdout, stdioconn.WithOnClose(func() { close(ch) }))
 	listener := &singleConnListener{notify: ch, conn: conn}
 	return conn, listener, nil
 }

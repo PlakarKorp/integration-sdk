@@ -42,7 +42,7 @@ func helperCmd(t *testing.T, code int) *exec.Cmd {
 
 func TestReadWrite(t *testing.T) {
 	stdin, stdout, peerW, peerR := pipes(t)
-	conn := New(stdin, stdout, nil, nil)
+	conn := New(stdin, stdout)
 	defer conn.Close()
 
 	if _, err := peerW.Write([]byte("ping")); err != nil {
@@ -82,13 +82,16 @@ func TestClose(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			stdin, stdout, _, _ := pipes(t)
 
+			calls := 0
+			opts := []Option{WithOnClose(func() { calls++ })}
+
 			var cmd *exec.Cmd
 			if tt.exitCode >= 0 {
 				cmd = helperCmd(t, tt.exitCode)
+				opts = append(opts, WithCmd(cmd))
 			}
 
-			calls := 0
-			conn := New(stdin, stdout, cmd, func() { calls++ })
+			conn := New(stdin, stdout, opts...)
 
 			err := conn.Close()
 			if tt.wantExit == 0 {
