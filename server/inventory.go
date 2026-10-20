@@ -112,19 +112,5 @@ func RunInventoryOn(ctx context.Context, constructor InventoryFn, listener net.L
 		constructor: constructor,
 	})
 
-	done := make(chan struct{})
-	defer close(done)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			server.Stop()
-		case <-done:
-		}
-	}()
-
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+	return serve(ctx, server, listener)
 }

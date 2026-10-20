@@ -67,16 +67,5 @@ func RunSecretProviderOn(ctx context.Context, constructor SecretProviderFn, list
 		constructor: constructor,
 	})
 
-	done := make(chan struct{})
-	defer close(done)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			server.Stop()
-		case <-done:
-		}
-	}()
-
-	return server.Serve(listener)
+	return serve(ctx, server, listener)
 }
