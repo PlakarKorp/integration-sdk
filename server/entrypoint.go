@@ -59,10 +59,7 @@ func EntrypointStorage(ctx context.Context, ctor storage.StoreFn, args []string)
 }
 
 func EntrypointInventory(ctx context.Context, constructor InventoryFn, args []string) {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s\n", args[0])
-		os.Exit(1)
-	}
+	checkArgs(args)
 
 	if err := RunInventory(ctx, constructor); err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "Inventory plugin failed unexpectedly: %s\n", err)
@@ -72,13 +69,10 @@ func EntrypointInventory(ctx context.Context, constructor InventoryFn, args []st
 	os.Exit(0)
 }
 
-func EntrypointSecretProvider(constructor SecretProviderFn, args []string) {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s\n", args[0])
-		os.Exit(1)
-	}
+func EntrypointSecretProvider(ctx context.Context, constructor SecretProviderFn, args []string) {
+	checkArgs(args)
 
-	if err := RunSecretProvider(constructor); err != nil && !errors.Is(err, io.EOF) {
+	if err := RunSecretProvider(ctx, constructor); err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "provider plugin failed unexpectedly: %s\n", err)
 		os.Exit(1)
 	}

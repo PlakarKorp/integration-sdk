@@ -358,23 +358,10 @@ func RunExporterOn(ctx context.Context, constructor exporter.ExporterFn, listene
 	plugin := &exporterPluginServer{constructor: constructor}
 	proto.RegisterExporterServer(server, plugin)
 
-	done := make(chan struct{})
-	defer close(done)
-
-	go func() {
-		select {
-		case <-ctx.Done():
-			// an exporter parked on a payload that is never
-			// going to arrive now would never get to wind
-			// down: Stop() does not wait for the handlers.
-			plugin.inflight.fail(fmt.Errorf("the plugin is shutting down: %w", ctx.Err()))
-			server.Stop()
-		case <-done:
-		}
-	}()
-
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+	return serve(ctx, server, listener, func() {
+		// an exporter parked on a payload that is never going to
+		// arrive now would never get to wind down: Stop() does not
+		// wait for the handlers.
+		plugin.inflight.fail(fmt.Errorf("the plugin is shutting down: %w", ctx.Err()))
+	})
 }

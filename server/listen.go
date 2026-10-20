@@ -1,11 +1,16 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"strings"
+
+	"github.com/PlakarKorp/integration-sdk/stdioconn"
+	"google.golang.org/grpc"
 )
 
 // When running over a container plakar sets this to the path of the socket we
@@ -15,11 +20,9 @@ const ListenEnv = "PLAKAR_PLUGIN_LISTEN"
 func initListener() (net.Listener, io.Closer, error) {
 	addr := os.Getenv(ListenEnv)
 	if addr == "" {
-		conn, listener, err := InitConn()
-		if err != nil {
-			return nil, nil, err
-		}
-		return listener, conn, nil
+		ch := make(chan struct{})
+		conn := stdioconn.New(os.Stdin, os.Stdout, stdioconn.WithOnClose(func() { close(ch) }))
+		return &singleConnListener{notify: ch, conn: conn}, conn, nil
 	}
 
 	path, ok := strings.CutPrefix(addr, "unix://")
@@ -41,4 +44,23 @@ func initListener() (net.Listener, io.Closer, error) {
 		return nil, nil, err
 	}
 	return listener, listener, nil
+}
+
+// serve runs srv on lis until ctx is cancelled.  Then it runs the
+// hooks, in order, and stops srv.
+func serve(ctx context.Context, srv *grpc.Server, lis net.Listener, hooks ...func()) error {
+	unregister := context.AfterFunc(ctx, func() {
+		for _, hook := range hooks {
+			hook()
+		}
+		srv.Stop()
+	})
+	defer unregister()
+
+	err := srv.Serve(lis)
+	if errors.Is(err, grpc.ErrServerStopped) && ctx.Err() != nil {
+		// cancelled before Serve got to run
+		return nil
+	}
+	return err
 }

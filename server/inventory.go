@@ -97,11 +97,11 @@ func (g *grpcInventoryServer) Close(ctx context.Context, _ *inventory.CloseReque
 }
 
 func RunInventory(ctx context.Context, constructor InventoryFn) error {
-	conn, listener, err := InitConn()
+	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
 	}
-	defer conn.Close()
+	defer closer.Close()
 
 	return RunInventoryOn(ctx, constructor, listener)
 }
@@ -111,8 +111,6 @@ func RunInventoryOn(ctx context.Context, constructor InventoryFn, listener net.L
 	inventory.RegisterInventoryServer(server, &grpcInventoryServer{
 		constructor: constructor,
 	})
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+
+	return serve(ctx, server, listener)
 }
