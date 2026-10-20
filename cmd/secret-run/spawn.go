@@ -9,6 +9,7 @@ import (
 
 	"github.com/PlakarKorp/integration-sdk"
 	"github.com/PlakarKorp/integration-sdk/client"
+	"github.com/PlakarKorp/integration-sdk/stdioconn"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -65,7 +66,7 @@ func spawn(ctx context.Context, exe string, args []string) (*grpc.ClientConn, er
 		return nil, err
 	}
 
-	conn := newStdioConn(stdin, stdout, cmd, nil)
+	conn := stdioconn.New(stdin, stdout, cmd, nil)
 
 	client, err := grpc.NewClient("127.0.0.1:0",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
