@@ -15,11 +15,13 @@ import (
 	"github.com/PlakarKorp/kloset/location"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type exporterPluginServer struct {
 	constructor    exporter.ExporterFn
-	exporter       exporter.Exporter
+	instance       instance[exporter.Exporter]
 	maxConcurrency int
 	flags          location.Flags
 
@@ -35,22 +37,32 @@ var (
 )
 
 func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
+	if req.Options == nil {
+		return nil, status.Error(codes.InvalidArgument, "missing options")
+	}
+
 	opts := connectors.Options{
 		MaxConcurrency:  int(req.Options.Maxconcurrency),
 		Hostname:        req.Options.Hostname,
 		OperatingSystem: req.Options.Os,
 		Architecture:    req.Options.Arch,
 		CWD:             req.Options.Cwd,
+		Excludes:        req.Options.Excludes,
+		NoXattr:         req.Options.Noxattr,
 	}
 
-	exp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
+	exp, err := plugin.instance.init(func() (exporter.Exporter, error) {
+		exp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
+		if err != nil {
+			return nil, err
+		}
+		plugin.maxConcurrency = int(req.Options.Maxconcurrency)
+		plugin.flags = exp.Flags()
+		return exp, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	plugin.exporter = exp
-	plugin.maxConcurrency = int(req.Options.Maxconcurrency)
-	plugin.flags = exp.Flags()
 
 	return &proto.InitResponse{
 		Origin:     exp.Origin(),
@@ -62,8 +74,12 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 }
 
 func (plugin *exporterPluginServer) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingResponse, error) {
-	err := plugin.exporter.Ping(ctx)
+	exp, err := plugin.instance.get()
 	if err != nil {
+		return nil, err
+	}
+
+	if err := exp.Ping(ctx); err != nil {
 		return nil, err
 	}
 
@@ -229,6 +245,10 @@ func (plugin *exporterPluginServer) receiveEntry(entry *proto.ExportEntry) (*con
 // PutData receives the payload of one record, which the Export stream
 // named with the same id.  Either stream can get here first.
 func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) error {
+	if _, err := plugin.instance.get(); err != nil {
+		return err
+	}
+
 	var wr *io.PipeWriter
 
 	for {
@@ -301,6 +321,11 @@ func (plugin *exporterPluginServer) transmitResults(stream grpc.BidiStreamingSer
 }
 
 func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse]) error {
+	exp, err := plugin.instance.get()
+	if err != nil {
+		return err
+	}
+
 	var (
 		size    = plugin.maxConcurrency
 		records = make(chan *connectors.Record, size)
@@ -319,7 +344,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 		return plugin.transmitResults(stream, results)
 	})
 
-	if err := plugin.exporter.Export(ctx, records, results); err != nil {
+	if err := exp.Export(ctx, records, results); err != nil {
 		return err
 	}
 
@@ -327,12 +352,16 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 }
 
 func (plugin *exporterPluginServer) Close(ctx context.Context, req *proto.CloseRequest) (*proto.CloseResponse, error) {
+	exp, err := plugin.instance.take()
+	if err != nil {
+		return nil, err
+	}
+
 	// we are done for good: release the payloads still waiting,
 	// before the exporter gets a chance to wait on one of them.
 	plugin.inflight.fail(ErrExporterClosed)
 
-	err := plugin.exporter.Close(ctx)
-	if err != nil {
+	if err := exp.Close(ctx); err != nil {
 		return nil, err
 	}
 

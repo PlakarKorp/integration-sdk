@@ -15,29 +15,39 @@ type SecretProviderFn func(context.Context, map[string]string) (integration.Secr
 type secretServer struct {
 	secret.UnimplementedSecretProviderServer
 
-	provider    integration.SecretProvider
+	instance    instance[integration.SecretProvider]
 	constructor SecretProviderFn
 }
 
 func (g *secretServer) Init(ctx context.Context, req *secret.InitRequest) (*secret.InitResponse, error) {
-	provider, err := g.constructor(ctx, req.Config)
+	_, err := g.instance.init(func() (integration.SecretProvider, error) {
+		return g.constructor(ctx, req.Config)
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	g.provider = provider
 	return &secret.InitResponse{}, nil
 }
 
 func (g *secretServer) Ping(ctx context.Context, req *secret.PingRequest) (*secret.PingResponse, error) {
-	if err := g.provider.Ping(ctx); err != nil {
+	provider, err := g.instance.get()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := provider.Ping(ctx); err != nil {
 		return nil, err
 	}
 	return &secret.PingResponse{}, nil
 }
 
 func (g *secretServer) Resolve(ctx context.Context, req *secret.ResolveRequest) (*secret.ResolveResponse, error) {
-	s, err := g.provider.Resolve(ctx, req.Handle)
+	provider, err := g.instance.get()
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := provider.Resolve(ctx, req.Handle)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +55,12 @@ func (g *secretServer) Resolve(ctx context.Context, req *secret.ResolveRequest) 
 }
 
 func (g *secretServer) Close(ctx context.Context, req *secret.CloseRequest) (*secret.CloseResponse, error) {
-	if err := g.provider.Close(ctx); err != nil {
+	provider, err := g.instance.take()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := provider.Close(ctx); err != nil {
 		return nil, err
 	}
 	return &secret.CloseResponse{}, nil
