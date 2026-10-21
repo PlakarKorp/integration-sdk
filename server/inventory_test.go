@@ -7,7 +7,6 @@ import (
 
 	"github.com/PlakarKorp/integration-sdk"
 	proto "github.com/PlakarKorp/integration-sdk/proto/inventory"
-	"github.com/PlakarKorp/pkg"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -21,7 +20,7 @@ type fakeInventory struct {
 func (f *fakeInventory) List(ctx context.Context, c chan<- *integration.InventoryEntry) error {
 	defer close(c)
 	c <- &integration.InventoryEntry{
-		Class:   pkg.ResourceClass("Database"),
+		Class:   integration.ResourceClass("Database"),
 		URN:     "urn:test:one",
 		Name:    "one",
 		Region:  "nl-ams",

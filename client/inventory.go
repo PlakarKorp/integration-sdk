@@ -8,7 +8,6 @@ import (
 
 	"github.com/PlakarKorp/integration-sdk"
 	"github.com/PlakarKorp/integration-sdk/proto/inventory"
-	"github.com/PlakarKorp/pkg"
 	"google.golang.org/grpc"
 )
 
@@ -71,8 +70,8 @@ func (inv *grpcInventoryClient) List(ctx context.Context, entries chan<- *integr
 		}
 
 		entry := &integration.InventoryEntry{
-			Class:    pkg.ResourceClass(res.Entry.Class),
-			SubClass: pkg.ResourceSubClass(res.Entry.Subclass),
+			Class:    integration.ResourceClass(res.Entry.Class),
+			SubClass: integration.ResourceSubClass(res.Entry.Subclass),
 			Tags:     res.Entry.Tags,
 			URN:      res.Entry.Urn,
 			Name:     res.Entry.Name,

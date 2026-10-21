@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/PlakarKorp/pkg"
 )
 
 type EndpointType string
@@ -38,9 +36,9 @@ type HostEndpoint struct {
 	Attributes map[string]string
 }
 type InventoryEntry struct {
-	Class    pkg.ResourceClass    // interpreted
-	SubClass pkg.ResourceSubClass // interpreted
-	Tags     []string             // <value>, <key>=<value>
+	Class    ResourceClass    // interpreted
+	SubClass ResourceSubClass // interpreted
+	Tags     []string         // <value>, <key>=<value>
 
 	// The rest is provider data
 	URN       string //
