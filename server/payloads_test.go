@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // payloadPipe returns the body' pipe taken in the given order.
@@ -25,9 +27,7 @@ func payloadPipe(t *testing.T, ps *payloads, id uint64, writerFirst bool) (*io.P
 			wr, err = ps.writer(id)
 		}
 	}
-	if err != nil {
-		t.Fatalf("claim payload %d: %v", id, err)
-	}
+	require.NoError(t, err, "claim payload %d", id)
 
 	return rd, wr
 }
@@ -52,12 +52,8 @@ func TestPayloadsClaimInEitherOrder(t *testing.T) {
 			}()
 
 			got, err := io.ReadAll(rd)
-			if err != nil {
-				t.Fatalf("read: %v", err)
-			}
-			if string(got) != "body" {
-				t.Errorf("got %q, want %q", got, "body")
-			}
+			require.NoError(t, err)
+			require.Equal(t, "body", string(got))
 		})
 	}
 }
@@ -80,12 +76,8 @@ func TestPayloadsKeepsIdsApart(t *testing.T) {
 		want string
 	}{{rd1, "one"}, {rd2, "two"}} {
 		got, err := io.ReadAll(tc.rd)
-		if err != nil {
-			t.Fatalf("read: %v", err)
-		}
-		if string(got) != tc.want {
-			t.Errorf("got %q, want %q", got, tc.want)
-		}
+		require.NoError(t, err)
+		require.Equal(t, tc.want, string(got))
 	}
 }
 
@@ -93,19 +85,15 @@ func TestPayloadsKeepsIdsApart(t *testing.T) {
 func TestPayloadsRejectsTheSameHalfTwice(t *testing.T) {
 	var ps payloads
 
-	if _, err := ps.reader(1); err != nil {
-		t.Fatalf("first claim: %v", err)
-	}
-	if _, err := ps.reader(1); !errors.Is(err, ErrDuplicatePayload) {
-		t.Errorf("second claim: %v, want %v", err, ErrDuplicatePayload)
-	}
+	_, err := ps.reader(1)
+	require.NoError(t, err, "first claim")
+	_, err = ps.reader(1)
+	require.ErrorIs(t, err, ErrDuplicatePayload, "second claim")
 
-	if _, err := ps.writer(2); err != nil {
-		t.Fatalf("first claim: %v", err)
-	}
-	if _, err := ps.writer(2); !errors.Is(err, ErrDuplicatePayload) {
-		t.Errorf("second claim: %v, want %v", err, ErrDuplicatePayload)
-	}
+	_, err = ps.writer(2)
+	require.NoError(t, err, "first claim")
+	_, err = ps.writer(2)
+	require.ErrorIs(t, err, ErrDuplicatePayload, "second claim")
 }
 
 func TestPayloadsFailCancelPendingPayloads(t *testing.T) {
@@ -114,9 +102,7 @@ func TestPayloadsFailCancelPendingPayloads(t *testing.T) {
 	t.Run("blocked read", func(t *testing.T) {
 		var ps payloads
 		rd, err := ps.reader(1)
-		if err != nil {
-			t.Fatalf("reader: %v", err)
-		}
+		require.NoError(t, err)
 
 		done := make(chan error, 1)
 		go func() {
@@ -125,17 +111,13 @@ func TestPayloadsFailCancelPendingPayloads(t *testing.T) {
 		}()
 
 		ps.fail(boom)
-		if err := <-done; !errors.Is(err, boom) {
-			t.Errorf("read returned %v, want %v", err, boom)
-		}
+		require.ErrorIs(t, <-done, boom, "read")
 	})
 
 	t.Run("blocked write", func(t *testing.T) {
 		var ps payloads
 		wr, err := ps.writer(1)
-		if err != nil {
-			t.Fatalf("writer: %v", err)
-		}
+		require.NoError(t, err)
 
 		done := make(chan error, 1)
 		go func() {
@@ -144,9 +126,7 @@ func TestPayloadsFailCancelPendingPayloads(t *testing.T) {
 		}()
 
 		ps.fail(boom)
-		if err := <-done; !errors.Is(err, boom) {
-			t.Errorf("write returned %v, want %v", err, boom)
-		}
+		require.ErrorIs(t, <-done, boom, "write")
 	})
 }
 
@@ -162,12 +142,8 @@ func TestPayloadsFailLeavesClaimedBodiesAlone(t *testing.T) {
 	}()
 
 	got, err := io.ReadAll(rd)
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if string(got) != "body" {
-		t.Errorf("got %q, want %q", got, "body")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "body", string(got))
 }
 
 // A PutData stream still arriving after the session is over gets told
@@ -178,10 +154,8 @@ func TestPayloadsRejectsClaimsAfterFail(t *testing.T) {
 	var ps payloads
 	ps.fail(boom)
 
-	if _, err := ps.reader(1); !errors.Is(err, boom) {
-		t.Errorf("reader: %v, want %v", err, boom)
-	}
-	if _, err := ps.writer(1); !errors.Is(err, boom) {
-		t.Errorf("writer: %v, want %v", err, boom)
-	}
+	_, err := ps.reader(1)
+	require.ErrorIs(t, err, boom, "reader")
+	_, err = ps.writer(1)
+	require.ErrorIs(t, err, boom, "writer")
 }

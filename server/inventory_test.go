@@ -7,6 +7,7 @@ import (
 
 	"github.com/PlakarKorp/integration-sdk"
 	proto "github.com/PlakarKorp/integration-sdk/proto/inventory"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -49,15 +50,12 @@ func dialInventory(t *testing.T, inv integration.Inventory) proto.InventoryClien
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
 	client := proto.NewInventoryClient(conn)
-	if _, err := client.Init(context.Background(), &proto.InitRequest{}); err != nil {
-		t.Fatalf("init: %v", err)
-	}
+	_, err = client.Init(context.Background(), &proto.InitRequest{})
+	require.NoError(t, err)
 	return client
 }
 
@@ -80,16 +78,10 @@ func TestInventoryListSendsNormalizedCountry(t *testing.T) {
 			client := dialInventory(t, &fakeInventory{country: tt.country})
 
 			stream, err := client.List(context.Background(), &proto.ListRequest{})
-			if err != nil {
-				t.Fatalf("list: %v", err)
-			}
+			require.NoError(t, err)
 			res, err := stream.Recv()
-			if err != nil {
-				t.Fatalf("recv: %v", err)
-			}
-			if got := res.GetEntry().GetCountry(); got != tt.want {
-				t.Fatalf("wire country = %q, want %q", got, tt.want)
-			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, res.GetEntry().GetCountry(), "wire country")
 		})
 	}
 }

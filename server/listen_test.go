@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -19,13 +20,9 @@ func TestInitListenerStdioDefault(t *testing.T) {
 	// process's real stdin/stdout, and closing those would silence the
 	// remaining tests.
 	listener, _, err := initListener()
-	if err != nil {
-		t.Fatalf("initListener: %v", err)
-	}
+	require.NoError(t, err)
 
-	if _, ok := listener.(*singleConnListener); !ok {
-		t.Fatalf("expected the stdio single-conn listener, got %T", listener)
-	}
+	require.IsType(t, &singleConnListener{}, listener)
 }
 
 func TestInitListenerUnixSocket(t *testing.T) {
@@ -33,18 +30,12 @@ func TestInitListenerUnixSocket(t *testing.T) {
 	t.Setenv(ListenEnv, "unix://"+sock)
 
 	listener, closer, err := initListener()
-	if err != nil {
-		t.Fatalf("initListener: %v", err)
-	}
+	require.NoError(t, err)
 	defer closer.Close()
 
 	fi, err := os.Stat(sock)
-	if err != nil {
-		t.Fatalf("stat socket: %v", err)
-	}
-	if perm := fi.Mode().Perm(); perm != 0666 {
-		t.Fatalf("socket mode = %o, want 0666", perm)
-	}
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0666), fi.Mode().Perm(), "socket mode")
 
 	// Prove the listener actually accepts connections.
 	done := make(chan error, 1)
@@ -56,21 +47,16 @@ func TestInitListenerUnixSocket(t *testing.T) {
 		done <- err
 	}()
 	conn, err := net.Dial("unix", sock)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err)
 	conn.Close()
-	if err := <-done; err != nil {
-		t.Fatalf("accept: %v", err)
-	}
+	require.NoError(t, <-done, "accept")
 }
 
 func TestInitListenerRejectsNonUnix(t *testing.T) {
 	t.Setenv(ListenEnv, "tcp://0.0.0.0:9876")
 
-	if _, _, err := initListener(); err == nil {
-		t.Fatal("expected initListener to reject a non-unix address")
-	}
+	_, _, err := initListener()
+	require.Error(t, err, "a non-unix address has to be rejected")
 }
 
 // A plugin cancelled before it gets to serve has to stop as cleanly as
@@ -107,11 +93,9 @@ func TestRunOnCancelledContext(t *testing.T) {
 
 			select {
 			case err := <-served:
-				if err != nil {
-					t.Fatalf("got %v, want nil", err)
-				}
+				require.NoError(t, err)
 			case <-time.After(5 * time.Second):
-				t.Fatal("did not return")
+				require.Fail(t, "did not return")
 			}
 		})
 	}
