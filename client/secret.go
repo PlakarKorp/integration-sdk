@@ -16,7 +16,7 @@ func NewSecretProvider(ctx context.Context, conn *grpc.ClientConn, config map[st
 	client := secret.NewSecretProviderClient(conn)
 
 	if _, err := client.Init(ctx, &secret.InitRequest{Config: config}); err != nil {
-		return nil, err
+		return nil, unwrap(err)
 	}
 
 	return &secretClient{client: client}, nil

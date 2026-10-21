@@ -143,7 +143,7 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportR
 			if record.Reader != nil {
 				record.Reader.Close()
 			}
-			return err
+			return unwrap(err)
 		}
 
 		if !hdr.GetRecord().HasReader {
@@ -167,7 +167,7 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportR
 						err = nil
 					}
 					record.Reader.Close()
-					return err
+					return unwrap(err)
 				}
 			}
 			if errors.Is(err, io.EOF) {
@@ -184,7 +184,7 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportR
 			if errors.Is(err, io.EOF) {
 				err = nil
 			}
-			return err
+			return unwrap(err)
 		}
 	}
 	return nil
@@ -409,7 +409,7 @@ func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRe
 func (g *Exporter) Export(ctx context.Context, records <-chan *connectors.Record, results chan<- *connectors.Result) error {
 	stream, err := g.client.Export(ctx)
 	if err != nil {
-		return err
+		return unwrap(err)
 	}
 
 	var wg errgroup.Group
