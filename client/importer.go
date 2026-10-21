@@ -99,15 +99,20 @@ func (g *Importer) Close(ctx context.Context) error {
 	return unwrap(err)
 }
 
+// errReaderClosed is a sentinel used to distinguish between the
+// parent context being cancelled and the Open() child context
+// being cancelled.  This is purpusefully not exported.
+var errReaderClosed = errors.New("reader closed")
+
 type streamReader struct {
 	ctx    context.Context
-	cancel func()
+	cancel context.CancelCauseFunc
 	stream grpc.ServerStreamingClient[proto.OpenResponse]
 	buf    bytes.Buffer
 }
 
 func (g *Importer) open(parentctx context.Context, record *connectors.Record) (io.ReadCloser, error) {
-	ctx, cancel := context.WithCancel(parentctx)
+	ctx, cancel := context.WithCancelCause(parentctx)
 
 	stream, err := g.client.Open(ctx, &proto.OpenRequest{
 		Record: &conn.Record{
@@ -119,7 +124,7 @@ func (g *Importer) open(parentctx context.Context, record *connectors.Record) (i
 		},
 	})
 	if err != nil {
-		cancel() // possibly not needed, but makes LSP happy
+		cancel(nil) // possibly not needed, but makes LSP happy
 		return nil, unwrap(err)
 	}
 
@@ -160,13 +165,17 @@ func (s *streamReader) Read(p []byte) (n int, err error) {
 // We still drain this in order to avoid a misuse of the API (where someone
 // would request less than what the server is sending), which leads to leaks.
 func (s *streamReader) Close() error {
-	s.cancel()
+	s.cancel(errReaderClosed)
 
 	for {
 		_, err := s.stream.Recv()
 		if errors.Is(err, io.EOF) {
 			return nil
 		} else if err != nil {
+			// stopping the stream is how we close it early
+			if errors.Is(context.Cause(s.ctx), errReaderClosed) {
+				return nil
+			}
 			return unwrap(err)
 		}
 	}
