@@ -342,21 +342,63 @@ func TestExporterServerStreamedPayload(t *testing.T) {
 }
 
 // A payload the client could not read reaches the exporter as a read
-// error on that record, and that record only.
+// error on that record, and that record only.  Anything the client sends
+// after the error is ignored, and it is not told the exporter gave up.
 func TestExporterServerPayloadError(t *testing.T) {
-	exp := &fakeExporter{}
-	client := dialPlugin(t, exp)
+	suite := []struct {
+		name    string
+		after   []*proto.PutDataRequest
+		payload string
+	}{
+		{"error only", nil, ""},
+		{"data after the error", []*proto.PutDataRequest{
+			{Packet: &proto.PutDataRequest_Chunk{Chunk: []byte("y")}},
+		}, "x"},
+	}
 
-	entry := entryOf("/f", 4096)
-	entry.Id = 1
+	for _, tc := range suite {
+		t.Run(tc.name, func(t *testing.T) {
+			exp := &fakeExporter{}
+			client := dialPlugin(t, exp)
 
-	exportEntries(t, client, []*proto.ExportEntry{entry}, func() {
-		putData(t, client, 1, nil, errors.New("boom"))
-	})
+			entry := entryOf("/f", 4096)
+			entry.Id = 1
 
-	got := exp.records()
-	require.Len(t, got, 1)
-	require.ErrorContains(t, got[0].err, "boom")
+			reqs := []*proto.PutDataRequest{
+				{Packet: &proto.PutDataRequest_Id{Id: 1}},
+			}
+			if tc.payload != "" {
+				reqs = append(reqs, &proto.PutDataRequest{
+					Packet: &proto.PutDataRequest_Chunk{Chunk: []byte(tc.payload)},
+				})
+			}
+			reqs = append(reqs, &proto.PutDataRequest{
+				Packet: &proto.PutDataRequest_Error{Error: "boom"},
+			})
+			reqs = append(reqs, tc.after...)
+
+			var res *proto.PutDataResponse
+			exportEntries(t, client, []*proto.ExportEntry{entry}, func() {
+				stream, err := client.PutData(t.Context())
+				require.NoError(t, err)
+				for _, req := range reqs {
+					// the plugin may have answered already
+					if err := stream.Send(req); !errors.Is(err, io.EOF) {
+						require.NoError(t, err, "send")
+					}
+				}
+				res, err = stream.CloseAndRecv()
+				require.NoError(t, err)
+			})
+
+			require.False(t, res.Aborted, "PutData response says aborted, want the client's error to stand")
+
+			got := exp.records()
+			require.Len(t, got, 1)
+			require.ErrorContains(t, got[0].err, "boom")
+			require.Equal(t, tc.payload, string(got[0].payload))
+		})
+	}
 }
 
 // An exporter that stops reading a record early says so through the
@@ -375,6 +417,48 @@ func TestExporterServerAbortedPayload(t *testing.T) {
 
 	require.NotNil(t, res)
 	require.True(t, res.Aborted, "PutData response %v, want aborted", res)
+}
+
+// A PutData that sends a bad packet must fail the payload, not leave
+// the exporter waiting on it.
+func TestExporterServerBadPutData(t *testing.T) {
+	suite := []struct {
+		name string
+		bad  *proto.PutDataRequest
+	}{
+		{"id sent twice", &proto.PutDataRequest{
+			Packet: &proto.PutDataRequest_Id{Id: 2},
+		}},
+		{"unknown packet", &proto.PutDataRequest{}},
+	}
+
+	for _, tc := range suite {
+		t.Run(tc.name, func(t *testing.T) {
+			exp := &fakeExporter{}
+			client := dialPlugin(t, exp)
+
+			entry := entryOf("/f", 1<<20)
+			entry.Id = 1
+
+			exportEntries(t, client, []*proto.ExportEntry{entry}, func() {
+				stream, err := client.PutData(t.Context())
+				require.NoError(t, err)
+				for _, req := range []*proto.PutDataRequest{
+					{Packet: &proto.PutDataRequest_Id{Id: 1}},
+					{Packet: &proto.PutDataRequest_Chunk{Chunk: []byte("x")}},
+					tc.bad,
+				} {
+					require.NoError(t, stream.Send(req), "send")
+				}
+				_, err = stream.CloseAndRecv()
+				require.Error(t, err, "PutData accepted a bad packet")
+			})
+
+			got := exp.records()
+			require.Len(t, got, 1)
+			require.Error(t, got[0].err, "read %d bytes and no error, want the payload failed", len(got[0].payload))
+		})
+	}
 }
 
 // The whole point: the receive goroutine no longer waits for one

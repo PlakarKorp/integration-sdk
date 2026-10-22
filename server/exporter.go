@@ -263,38 +263,44 @@ func (plugin *exporterPluginServer) receiveEntry(entry *proto.ExportEntry) (*con
 
 // PutData receives the payload of one record, which the Export stream
 // named with the same id.  Either stream can get here first.
-func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) error {
+func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) (err error) {
 	if _, err := plugin.instance.get(); err != nil {
 		return err
 	}
 
-	var wr *io.PipeWriter
+	req, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("payload without an id")
+	}
+	if err != nil {
+		return err
+	}
 
+	id, ok := req.Packet.(*proto.PutDataRequest_Id)
+	if !ok {
+		return fmt.Errorf("bad type; expected an ID, got %t",
+			req.Packet)
+	}
+
+	wr, err := plugin.inflight.writer(id.Id)
+	if err != nil {
+		return err
+	}
+	defer func() { wr.CloseWithError(err) }()
+
+	// consume the record's body
+loop:
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			if wr != nil {
-				wr.CloseWithError(err)
-			}
 			return err
 		}
 
 		switch p := req.Packet.(type) {
-		case *proto.PutDataRequest_Id:
-			if wr != nil {
-				return fmt.Errorf("payload %d: id sent twice", p.Id)
-			}
-			if wr, err = plugin.inflight.writer(p.Id); err != nil {
-				return err
-			}
-
 		case *proto.PutDataRequest_Chunk:
-			if wr == nil {
-				return fmt.Errorf("payload data before its id")
-			}
 			if _, err := wr.Write(p.Chunk); err != nil {
 				// the exporter closed the record early;
 				// say so rather than let the client take
@@ -306,21 +312,16 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[pr
 			}
 
 		case *proto.PutDataRequest_Error:
-			if wr == nil {
-				return fmt.Errorf("payload error before its id")
-			}
 			// the client could not read this record; the
 			// exporter decides what that means for it.
 			wr.CloseWithError(errors.New(p.Error))
+			break loop
 
 		default:
-			return fmt.Errorf("bad type; expected a payload, got %t", req.Packet)
+			return fmt.Errorf("bad type; expected data or error, got %t", req.Packet)
 		}
 	}
 
-	if wr == nil {
-		return fmt.Errorf("payload without an id")
-	}
 	wr.Close()
 
 	return stream.SendAndClose(&proto.PutDataResponse{})
