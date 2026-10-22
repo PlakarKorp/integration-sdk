@@ -43,6 +43,10 @@ type fakeExporter struct {
 	// after that many bytes instead of reading it to the end.
 	readLimit int
 
+	// closeEarly makes the exporter close the payload itself before
+	// acking the record, which closes it once more.
+	closeEarly bool
+
 	// reading and seen, when set, report a record about to be read
 	// and one that has been.
 	reading chan struct{}
@@ -83,6 +87,9 @@ func (f *fakeExporter) consume(record *connectors.Record) *connectors.Result {
 			rd = io.LimitReader(rd, int64(f.readLimit))
 		}
 		got.payload, got.err = io.ReadAll(rd)
+		if f.closeEarly {
+			record.Reader.Close()
+		}
 	}
 
 	f.mu.Lock()
@@ -401,9 +408,26 @@ func TestExporterServerRecordsDoNotWaitOnPayloads(t *testing.T) {
 // The old protocol, where the payload follows the record on the Export
 // stream itself, has to keep working untouched.
 func TestExporterServerLegacyProtocol(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		exp  *fakeExporter
+	}{
+		{"read to the end", &fakeExporter{}},
+		{"closed before the ack", &fakeExporter{closeEarly: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			legacyExport(t, tc.exp)
+		})
+	}
+}
+
+// legacyExport runs an Export session with the old protocol and checks
+// the exporter got every record and payload.
+func legacyExport(t *testing.T, exp *fakeExporter) {
+	t.Helper()
+
 	body := bytes.Repeat([]byte("x"), 32*1024)
 
-	exp := &fakeExporter{}
 	client := dialPlugin(t, exp)
 
 	stream, err := client.Export(t.Context())

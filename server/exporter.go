@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
@@ -91,6 +92,11 @@ type streamReader struct {
 	eof    bool
 	stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse]
 	buf    bytes.Buffer
+
+	// Record.Ok() and Record.Error() close the reader too, so the
+	// exporter may well have closed it already.
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func open(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], end chan struct{}) io.ReadCloser {
@@ -130,9 +136,16 @@ func (s *streamReader) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("unexpected response: %v", fileResponse)
 }
 
+func (s *streamReader) Close() error {
+	s.closeOnce.Do(func() {
+		s.closeErr = s.close()
+	})
+	return s.closeErr
+}
+
 // We still drain this in order to avoid a misuse of the API (where someone
 // would request less than what the server is sending), which leads to hangs.
-func (s *streamReader) Close() error {
+func (s *streamReader) close() error {
 	defer close(s.end)
 
 	for !s.eof {
