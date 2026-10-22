@@ -10,6 +10,7 @@ import (
 
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/objects"
+	"github.com/stretchr/testify/require"
 )
 
 type countingReadCloser struct {
@@ -33,14 +34,9 @@ func TestHoldingReaders_TrackGetDelete(t *testing.T) {
 	}
 
 	h.Track(rec)
-	got := h.Get(rec)
-	if got != rc {
-		t.Fatalf("Get did not return the same reader we Tracked")
-	}
+	require.Same(t, rc, h.Get(rec), "Get did not return the same reader we Tracked")
 	// Second Get must return nil (entry removed)
-	if again := h.Get(rec); again != nil {
-		t.Fatalf("Get returned a non-nil reader after entry was claimed: %v", again)
-	}
+	require.Nil(t, h.Get(rec), "Get returned a non-nil reader after entry was claimed")
 }
 
 func TestHoldingReaders_XattrKeySeparators(t *testing.T) {
@@ -76,15 +72,9 @@ func TestHoldingReaders_XattrKeySeparators(t *testing.T) {
 	h.Track(ads)
 	h.Track(custom)
 
-	if got := h.Get(ext); got != r1 {
-		t.Errorf("extended xattr lookup got the wrong reader")
-	}
-	if got := h.Get(ads); got != r2 {
-		t.Errorf("ADS xattr lookup got the wrong reader")
-	}
-	if got := h.Get(custom); got != r3 {
-		t.Errorf("Custom xattr lookup got the wrong reader")
-	}
+	require.Same(t, r1, h.Get(ext), "extended xattr lookup got the wrong reader")
+	require.Same(t, r2, h.Get(ads), "ADS xattr lookup got the wrong reader")
+	require.Same(t, r3, h.Get(custom), "Custom xattr lookup got the wrong reader")
 }
 
 func TestHoldingReaders_CloseDrainsRemaining(t *testing.T) {
@@ -97,12 +87,9 @@ func TestHoldingReaders_CloseDrainsRemaining(t *testing.T) {
 	h.Track(&connectors.Record{Pathname: "/b", Reader: rc2})
 
 	err := h.Close()
-	if !rc1.closed.Load() || !rc2.closed.Load() {
-		t.Fatalf("Close did not close all tracked readers: %v, %v", rc1.closed.Load(), rc2.closed.Load())
-	}
-	if err == nil {
-		t.Fatalf("Close should propagate the first non-nil close error")
-	}
+	require.True(t, rc1.closed.Load(), "Close did not close all tracked readers")
+	require.True(t, rc2.closed.Load(), "Close did not close all tracked readers")
+	require.Error(t, err, "Close should propagate the first non-nil close error")
 }
 
 func TestHoldingReaders_ConcurrentTrackGet(t *testing.T) {

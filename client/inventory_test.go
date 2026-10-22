@@ -7,6 +7,7 @@ import (
 
 	"github.com/PlakarKorp/integration-sdk"
 	proto "github.com/PlakarKorp/integration-sdk/proto/inventory"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -50,15 +51,11 @@ func dialInventory(t *testing.T, srv *fakeInventoryServer) integration.Inventory
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err, "dial")
 	t.Cleanup(func() { _ = conn.Close() })
 
 	inv, err := NewInventory(context.Background(), conn, nil)
-	if err != nil {
-		t.Fatalf("init: %v", err)
-	}
+	require.NoError(t, err, "init")
 	return inv
 }
 
@@ -81,16 +78,10 @@ func TestInventoryListNormalizesCountry(t *testing.T) {
 			inv := dialInventory(t, &fakeInventoryServer{country: tt.country})
 
 			c := make(chan *integration.InventoryEntry, 4)
-			if err := inv.List(context.Background(), c); err != nil {
-				t.Fatalf("list: %v", err)
-			}
+			require.NoError(t, inv.List(context.Background(), c))
 			entry := <-c
-			if entry == nil {
-				t.Fatal("expected an entry")
-			}
-			if entry.Country != tt.want {
-				t.Fatalf("entry country = %q, want %q", entry.Country, tt.want)
-			}
+			require.NotNil(t, entry, "expected an entry")
+			require.Equal(t, tt.want, entry.Country)
 		})
 	}
 }

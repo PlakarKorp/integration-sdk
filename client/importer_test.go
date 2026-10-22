@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/objects"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -145,13 +145,13 @@ func runImport(t *testing.T, imp *Importer) (error, []*connectors.Record) {
 	select {
 	case err = <-importDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for Import to return")
+		require.Fail(t, "timeout waiting for Import to return")
 	}
 
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second): // shorter timer here because adding records to a list should not take long.
-		t.Fatal("timeout waiting for the record consumer to exit")
+		require.Fail(t, "timeout waiting for the record consumer to exit")
 	}
 
 	return err, seen
@@ -174,9 +174,7 @@ func dialImporter(t *testing.T, srv *fakeImporter) (*grpc.ClientConn, func()) {
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err, "dial")
 	return conn, func() {
 		_ = conn.Close()
 		s.Stop()
@@ -209,22 +207,14 @@ func TestImporter_InitAndGetters(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "proto", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
-	if imp.Origin() != "o" || imp.Type() != "t" || imp.Root() != "/r" {
-		t.Errorf("getters mismatch: %q %q %q", imp.Origin(), imp.Type(), imp.Root())
-	}
+	require.NoError(t, err)
+	require.Equal(t, "o", imp.Origin())
+	require.Equal(t, "t", imp.Type())
+	require.Equal(t, "/r", imp.Root())
 	// FLAG_NEEDACK is always OR'd in.
-	if imp.Flags() == 0 {
-		t.Errorf("expected FLAG_NEEDACK to be set, got 0")
-	}
-	if err := imp.Ping(context.Background()); err != nil {
-		t.Errorf("Ping: %v", err)
-	}
-	if err := imp.Close(context.Background()); err != nil {
-		t.Errorf("Close: %v", err)
-	}
+	require.NotZero(t, imp.Flags(), "expected FLAG_NEEDACK to be set")
+	require.NoError(t, imp.Ping(context.Background()))
+	require.NoError(t, imp.Close(context.Background()))
 }
 
 func TestImporter_Init_UnwrapsErrors(t *testing.T) {
@@ -235,9 +225,7 @@ func TestImporter_Init_UnwrapsErrors(t *testing.T) {
 	defer cleanup()
 
 	_, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if err == nil || !strings.Contains(err.Error(), "I/O error") {
-		t.Fatalf("expected Unavailable to be wrapped as I/O error, got %v", err)
-	}
+	require.ErrorContains(t, err, "I/O error", "expected Unavailable to be wrapped as I/O error")
 }
 
 func TestImporter_Init_CanceledMapsToContextCanceled(t *testing.T) {
@@ -248,9 +236,7 @@ func TestImporter_Init_CanceledMapsToContextCanceled(t *testing.T) {
 	defer cleanup()
 
 	_, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", err)
-	}
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
@@ -274,9 +260,7 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	records := make(chan *connectors.Record, 4)
 	results := make(chan *connectors.Result, 4)
@@ -288,29 +272,22 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	select {
 	case got = <-records:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for record")
+		require.Fail(t, "timeout waiting for record")
 	}
-	if got == nil || got.Pathname != "/a.txt" {
-		t.Fatalf("unexpected record: %+v", got)
-	}
+	require.NotNil(t, got)
+	require.Equal(t, "/a.txt", got.Pathname)
 
 	// Open via LazyReader
 	data, err := io.ReadAll(got.Reader)
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
-	if string(data) != "hello" {
-		t.Errorf("payload mismatch: %q", data)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(data))
 	_ = got.Reader.Close()
 
 	// ACK
 	results <- &connectors.Result{Record: *got}
 	close(results)
 
-	if err := <-importDone; err != nil {
-		t.Fatalf("Import returned: %v", err)
-	}
+	require.NoError(t, <-importDone)
 
 	// Wait for the server to finish its Import handler so it has actually
 	// drained the ack stream — Import returns as soon as the client side
@@ -318,11 +295,9 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	select {
 	case <-srv.ackDone:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for server import handler to exit")
+		require.Fail(t, "timeout waiting for server import handler to exit")
 	}
-	if len(srv.acks) != 1 {
-		t.Errorf("server saw %d acks, want 1", len(srv.acks))
-	}
+	require.Len(t, srv.acks, 1)
 }
 
 func TestImporter_OpenErrorPropagates(t *testing.T) {
@@ -334,19 +309,14 @@ func TestImporter_OpenErrorPropagates(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	gi := imp.(*Importer)
 	rd, err := gi.open(context.Background(), &connectors.Record{Pathname: "/missing"})
-	if err != nil {
-		t.Fatalf("open returned err immediately: %v", err)
-	}
+	require.NoError(t, err, "open returned err immediately")
 	defer rd.Close()
-	if _, err := io.ReadAll(rd); err == nil {
-		t.Fatalf("expected read error from server, got nil")
-	}
+	_, err = io.ReadAll(rd)
+	require.Error(t, err, "expected read error from server")
 }
 
 func TestImporter_EarlyImportErrorAfterFinishedIsReported(t *testing.T) {
@@ -358,21 +328,12 @@ func TestImporter_EarlyImportErrorAfterFinishedIsReported(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	earlyImportErr, seen := runImport(t, imp.(*Importer))
 
-	if len(seen) != 0 {
-		t.Errorf("expected no record, got %d", len(seen))
-	}
-	if earlyImportErr == nil {
-		t.Fatal("expected the error returned by the plugin's Import(), got nil")
-	}
-	if !strings.Contains(earlyImportErr.Error(), "simulated backup tool failure") {
-		t.Errorf("unexpected error: %v", earlyImportErr)
-	}
+	require.Empty(t, seen)
+	require.ErrorContains(t, earlyImportErr, "simulated backup tool failure")
 }
 
 func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
@@ -390,21 +351,13 @@ func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	earlyImportErr, seen := runImport(t, imp.(*Importer))
 
-	if len(seen) != 1 || seen[0].Pathname != "/a.txt" {
-		t.Fatalf("expected the record emitted before the failure, got %+v", seen)
-	}
-	if earlyImportErr == nil {
-		t.Fatal("expected the error returned by the plugin's Import(), got nil")
-	}
-	if !strings.Contains(earlyImportErr.Error(), "simulated backup tool failure") {
-		t.Errorf("unexpected error: %v", earlyImportErr)
-	}
+	require.Len(t, seen, 1, "expected the record emitted before the failure")
+	require.Equal(t, "/a.txt", seen[0].Pathname)
+	require.ErrorContains(t, earlyImportErr, "simulated backup tool failure")
 }
 
 func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
@@ -422,21 +375,13 @@ func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	ImportErr, seen := runImport(t, imp.(*Importer))
 
-	if len(seen) != 1 || seen[0].Pathname != "/a.txt" {
-		t.Fatalf("expected the record emitted before the failure, got %+v", seen)
-	}
-	if ImportErr == nil {
-		t.Fatal("expected the error returned by the plugin's Import(), got nil")
-	}
-	if !strings.Contains(ImportErr.Error(), "simulated backup tool failure") {
-		t.Errorf("unexpected error: %v", ImportErr)
-	}
+	require.Len(t, seen, 1, "expected the record emitted before the failure")
+	require.Equal(t, "/a.txt", seen[0].Pathname)
+	require.ErrorContains(t, ImportErr, "simulated backup tool failure")
 }
 
 func TestImporter_EarlyImportCanceledIsUnwrapped(t *testing.T) {
@@ -448,15 +393,11 @@ func TestImporter_EarlyImportCanceledIsUnwrapped(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	earlyImportErr, _ := runImport(t, imp.(*Importer))
 
-	if !errors.Is(earlyImportErr, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", earlyImportErr)
-	}
+	require.ErrorIs(t, earlyImportErr, context.Canceled)
 }
 
 func TestImporter_EarlyImportSucceedsAfterFinished(t *testing.T) {
@@ -473,16 +414,10 @@ func TestImporter_EarlyImportSucceedsAfterFinished(t *testing.T) {
 	defer cleanup()
 
 	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewImporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	earlyImportErr, seen := runImport(t, imp.(*Importer))
 
-	if earlyImportErr != nil {
-		t.Fatalf("Import returned: %v", earlyImportErr)
-	}
-	if len(seen) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(seen))
-	}
+	require.NoError(t, earlyImportErr)
+	require.Len(t, seen, 1)
 }

@@ -11,6 +11,7 @@ import (
 	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"github.com/PlakarKorp/kloset/connectors/storage"
 	"github.com/PlakarKorp/kloset/objects"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -119,9 +120,7 @@ func dialTestServer(t *testing.T, srv *fakeServer) (*grpc.ClientConn, func()) {
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err, "dial")
 	return conn, func() {
 		_ = conn.Close()
 		s.Stop()
@@ -138,25 +137,17 @@ func TestStore_BasicLifecycle(t *testing.T) {
 	defer cleanup()
 
 	s, err := NewStorage(context.Background(), conn, "p", nil)
-	if err != nil {
-		t.Fatalf("NewStorage: %v", err)
-	}
+	require.NoError(t, err)
 
-	if cfg, err := s.Open(context.Background()); err != nil || string(cfg) != "cfg" {
-		t.Errorf("Open: %q %v", cfg, err)
-	}
-	if err := s.Create(context.Background(), []byte("x")); err != nil {
-		t.Errorf("Create: %v", err)
-	}
-	if err := s.Ping(context.Background()); err != nil {
-		t.Errorf("Ping: %v", err)
-	}
-	if size, err := s.Size(context.Background()); err != nil || size != 42 {
-		t.Errorf("Size: %d %v", size, err)
-	}
-	if err := s.Close(context.Background()); err != nil {
-		t.Errorf("Close: %v", err)
-	}
+	cfg, err := s.Open(context.Background())
+	require.NoError(t, err, "Open")
+	require.Equal(t, "cfg", string(cfg))
+	require.NoError(t, s.Create(context.Background(), []byte("x")), "Create")
+	require.NoError(t, s.Ping(context.Background()), "Ping")
+	size, err := s.Size(context.Background())
+	require.NoError(t, err, "Size")
+	require.Equal(t, int64(42), size)
+	require.NoError(t, s.Close(context.Background()), "Close")
 }
 
 func TestStore_List_ValidatesMacLength(t *testing.T) {
@@ -168,9 +159,7 @@ func TestStore_List_ValidatesMacLength(t *testing.T) {
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
 	_, err := s.List(context.Background(), storage.StorageResourcePackfile)
-	if err == nil {
-		t.Fatalf("expected validation error for short MAC")
-	}
+	require.Error(t, err, "expected validation error for short MAC")
 }
 
 func TestStore_List_RoundTripsMacs(t *testing.T) {
@@ -181,12 +170,8 @@ func TestStore_List_RoundTripsMacs(t *testing.T) {
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
 	got, err := s.List(context.Background(), storage.StorageResourcePackfile)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(got) != 1 || got[0] != objects.MAC(full) {
-		t.Errorf("List mismatch: %v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, []objects.MAC{objects.MAC(full)}, got)
 }
 
 func TestStore_PutStreamsChunks(t *testing.T) {
@@ -202,22 +187,14 @@ func TestStore_PutStreamsChunks(t *testing.T) {
 	}
 	payload := []byte("hello world")
 	n, err := s.Put(context.Background(), storage.StorageResourcePackfile, mac, bytes.NewReader(payload))
-	if err != nil {
-		t.Fatalf("Put: %v", err)
-	}
-	if n != 11 {
-		t.Errorf("BytesWritten: %d, want 11", n)
-	}
-	if !bytes.Equal(srv.receivedMac, mac[:]) {
-		t.Errorf("mac mismatch")
-	}
+	require.NoError(t, err)
+	require.Equal(t, int64(11), n, "BytesWritten")
+	require.Equal(t, mac[:], srv.receivedMac)
 	var glued []byte
 	for _, c := range srv.receivedChunks {
 		glued = append(glued, c...)
 	}
-	if !bytes.Equal(glued, payload) {
-		t.Errorf("payload mismatch: %q vs %q", glued, payload)
-	}
+	require.Equal(t, payload, glued)
 }
 
 func TestStore_GetStreamsChunks(t *testing.T) {
@@ -229,17 +206,11 @@ func TestStore_GetStreamsChunks(t *testing.T) {
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
 	rd, err := s.Get(context.Background(), storage.StorageResourcePackfile, objects.MAC{}, nil)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
+	require.NoError(t, err)
 	defer rd.Close()
 	data, err := io.ReadAll(rd)
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
-	if string(data) != "foobarbaz" {
-		t.Errorf("payload mismatch: %q", data)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "foobarbaz", string(data))
 }
 
 func TestStore_Get_UnavailableMapsToIOError(t *testing.T) {
@@ -251,32 +222,25 @@ func TestStore_Get_UnavailableMapsToIOError(t *testing.T) {
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
 	rd, err := s.Get(context.Background(), storage.StorageResourcePackfile, objects.MAC{}, nil)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
+	require.NoError(t, err)
 	defer rd.Close()
 
 	_, err = io.ReadAll(rd)
-	if err == nil {
-		t.Fatalf("expected error reading from server that returned Unavailable")
-	}
+	require.Error(t, err, "expected error reading from server that returned Unavailable")
 }
 
 func TestSendChunks_PropagatesReadError(t *testing.T) {
 	rd := io.NopCloser(&errReader{err: errors.New("disk-on-fire")})
 	n, err := SendChunks(rd, func([]byte) error { return nil })
-	if n != 0 || err == nil {
-		t.Fatalf("expected read error, got n=%d err=%v", n, err)
-	}
+	require.Error(t, err, "expected read error")
+	require.Zero(t, n)
 }
 
 func TestSendChunks_PropagatesSendError(t *testing.T) {
 	rd := io.NopCloser(bytes.NewReader([]byte("xxx")))
 	sendErr := errors.New("net dead")
 	_, err := SendChunks(rd, func([]byte) error { return sendErr })
-	if err == nil {
-		t.Fatalf("expected send error")
-	}
+	require.Error(t, err, "expected send error")
 }
 
 func TestReceiveChunks_ReassemblesAcrossChunkBoundaries(t *testing.T) {
@@ -300,11 +264,7 @@ func TestReceiveChunks_ReassemblesAcrossChunkBoundaries(t *testing.T) {
 		if err == io.EOF {
 			break
 		}
-		if err != nil {
-			t.Fatalf("Read: %v", err)
-		}
+		require.NoError(t, err, "Read")
 	}
-	if out.String() != "abcdefghij" {
-		t.Errorf("payload mismatch: %q", out.String())
-	}
+	require.Equal(t, "abcdefghij", out.String())
 }

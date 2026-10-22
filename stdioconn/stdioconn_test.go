@@ -1,13 +1,14 @@
 package stdioconn
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // pipes returns the conn's ends (stdin, stdout) and the peer's ends
@@ -15,14 +16,10 @@ import (
 func pipes(t *testing.T) (stdin, stdout, peerW, peerR *os.File) {
 	t.Helper()
 	inR, inW, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { inW.Close() })
 	outR, outW, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { outR.Close() })
 	return inR, outW, inW, outR
 }
@@ -37,9 +34,7 @@ func sh(script string) *exec.Cmd {
 func helperCmd(t *testing.T, code int) *exec.Cmd {
 	t.Helper()
 	cmd := sh(fmt.Sprintf("exit %d", code))
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, cmd.Start())
 	return cmd
 }
 
@@ -48,26 +43,18 @@ func TestReadWrite(t *testing.T) {
 	conn := New(stdin, stdout)
 	defer conn.Close()
 
-	if _, err := peerW.Write([]byte("ping")); err != nil {
-		t.Fatal(err)
-	}
+	_, err := peerW.Write([]byte("ping"))
+	require.NoError(t, err)
 	buf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, buf); err != nil {
-		t.Fatal(err)
-	}
-	if string(buf) != "ping" {
-		t.Errorf("read %q, want %q", buf, "ping")
-	}
+	_, err = io.ReadFull(conn, buf)
+	require.NoError(t, err)
+	require.Equal(t, "ping", string(buf))
 
-	if _, err := conn.Write([]byte("pong")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.ReadFull(peerR, buf); err != nil {
-		t.Fatal(err)
-	}
-	if string(buf) != "pong" {
-		t.Errorf("peer read %q, want %q", buf, "pong")
-	}
+	_, err = conn.Write([]byte("pong"))
+	require.NoError(t, err)
+	_, err = io.ReadFull(peerR, buf)
+	require.NoError(t, err)
+	require.Equal(t, "pong", string(buf), "peer read")
 }
 
 func TestClose(t *testing.T) {
@@ -98,35 +85,23 @@ func TestClose(t *testing.T) {
 
 			err := conn.Close()
 			if tt.wantExit == 0 {
-				if err != nil {
-					t.Fatalf("Close: %v", err)
-				}
+				require.NoError(t, err)
 			} else {
 				var exitErr *exec.ExitError
-				if !errors.As(err, &exitErr) {
-					t.Fatalf("Close: got %v, want *exec.ExitError", err)
-				}
-				if got := exitErr.ExitCode(); got != tt.wantExit {
-					t.Fatalf("exit code %d, want %d", got, tt.wantExit)
-				}
+				require.ErrorAs(t, err, &exitErr)
+				require.Equal(t, tt.wantExit, exitErr.ExitCode())
 			}
-			if cmd != nil && cmd.ProcessState == nil {
-				t.Error("Close returned before waiting for the command")
+			if cmd != nil {
+				require.NotNil(t, cmd.ProcessState, "Close returned before waiting for the command")
 			}
 
-			if again := conn.Close(); again != err {
-				t.Errorf("second Close: got %v, want %v", again, err)
-			}
-			if calls != 1 {
-				t.Errorf("onclose called %d times, want 1", calls)
-			}
+			require.Equal(t, err, conn.Close(), "second Close")
+			require.Equal(t, 1, calls, "onclose calls")
 
-			if _, err := conn.Read(make([]byte, 1)); !errors.Is(err, os.ErrClosed) {
-				t.Errorf("Read after Close: got %v, want %v", err, os.ErrClosed)
-			}
-			if _, err := conn.Write([]byte("x")); !errors.Is(err, os.ErrClosed) {
-				t.Errorf("Write after Close: got %v, want %v", err, os.ErrClosed)
-			}
+			_, err = conn.Read(make([]byte, 1))
+			require.ErrorIs(t, err, os.ErrClosed, "Read after Close")
+			_, err = conn.Write([]byte("x"))
+			require.ErrorIs(t, err, os.ErrClosed, "Write after Close")
 		})
 	}
 }
@@ -140,35 +115,24 @@ func cat() *exec.Cmd {
 
 func TestSpawn(t *testing.T) {
 	conn, err := Spawn(cat())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if _, err := conn.Write([]byte("ping\n")); err != nil {
-		t.Fatal(err)
-	}
+	_, err = conn.Write([]byte("ping\n"))
+	require.NoError(t, err)
 	buf := make([]byte, 4)
-	if _, err := io.ReadFull(conn, buf); err != nil {
-		t.Fatal(err)
-	}
-	if string(buf) != "ping" {
-		t.Errorf("read %q, want %q", buf, "ping")
-	}
+	_, err = io.ReadFull(conn, buf)
+	require.NoError(t, err)
+	require.Equal(t, "ping", string(buf))
 
 	// closing our end of the pipe is what lets the child exit.
-	if err := conn.Close(); err != nil {
-		t.Errorf("Close: %v", err)
-	}
+	require.NoError(t, conn.Close())
 }
 
 func TestSpawnExitStatus(t *testing.T) {
 	conn, err := Spawn(sh("exit 3"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var exitErr *exec.ExitError
-	if err := conn.Close(); !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
-		t.Errorf("Close: got %v, want exit status 3", err)
-	}
+	require.ErrorAs(t, conn.Close(), &exitErr)
+	require.Equal(t, 3, exitErr.ExitCode())
 }

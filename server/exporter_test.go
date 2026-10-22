@@ -18,6 +18,8 @@ import (
 	"github.com/PlakarKorp/kloset/connectors/exporter"
 	"github.com/PlakarKorp/kloset/location"
 	"github.com/PlakarKorp/kloset/objects"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -130,18 +132,15 @@ func dialOn(t *testing.T, lis *bufconn.Listener) proto.ExporterClient {
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
 
 	client := proto.NewExporterClient(conn)
-	if _, err := client.Init(t.Context(), &proto.InitRequest{
+	_, err = client.Init(t.Context(), &proto.InitRequest{
 		Options: &proto.Options{Maxconcurrency: 4},
 		Proto:   "p",
-	}); err != nil {
-		t.Fatalf("Init: %v", err)
-	}
+	})
+	require.NoError(t, err)
 
 	return client
 }
@@ -160,12 +159,14 @@ func entryOf(pathname string, size int64) *proto.ExportEntry {
 }
 
 // putData uploads one payload the way the client does.
+// It runs on helper goroutines too, so it reports with assert and returns
+// nil on failure instead of stopping the test.
 func putData(t *testing.T, client proto.ExporterClient, id uint64, body []byte, readErr error) *proto.PutDataResponse {
 	t.Helper()
 
 	stream, err := client.PutData(t.Context())
-	if err != nil {
-		t.Fatalf("PutData: %v", err)
+	if !assert.NoError(t, err, "PutData") {
+		return nil
 	}
 
 	// the exporter may hang up at any point, which ends the stream
@@ -173,7 +174,7 @@ func putData(t *testing.T, client proto.ExporterClient, id uint64, body []byte, 
 	send := func(req *proto.PutDataRequest) bool {
 		err := stream.Send(req)
 		if err != nil && !errors.Is(err, io.EOF) {
-			t.Fatalf("send: %v", err)
+			assert.NoError(t, err, "send")
 		}
 		return err == nil
 	}
@@ -196,9 +197,7 @@ func putData(t *testing.T, client proto.ExporterClient, id uint64, body []byte, 
 	}
 
 	res, err := stream.CloseAndRecv()
-	if err != nil {
-		t.Fatalf("CloseAndRecv: %v", err)
-	}
+	assert.NoError(t, err, "CloseAndRecv")
 
 	return res
 }
@@ -222,9 +221,7 @@ func exportEntries(t *testing.T, client proto.ExporterClient, entries []*proto.E
 	t.Helper()
 
 	stream, err := client.Export(t.Context())
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, err)
 
 	results := make(chan int, 1)
 	go func() {
@@ -239,25 +236,22 @@ func exportEntries(t *testing.T, client proto.ExporterClient, entries []*proto.E
 	}()
 
 	for _, entry := range entries {
-		if err := stream.Send(&proto.ExportRequest{
+		err := stream.Send(&proto.ExportRequest{
 			Packet: &proto.ExportRequest_Entry{Entry: entry},
-		}); err != nil {
-			t.Fatalf("send entry: %v", err)
-		}
+		})
+		require.NoError(t, err, "send entry")
 	}
 
 	if upload != nil {
 		upload()
 	}
 
-	if err := stream.CloseSend(); err != nil {
-		t.Fatalf("CloseSend: %v", err)
-	}
+	require.NoError(t, stream.CloseSend())
 
 	select {
 	case <-results:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for the export to finish")
+		require.Fail(t, "timeout waiting for the export to finish")
 	}
 }
 
@@ -283,12 +277,8 @@ func TestExporterServerInlinePayload(t *testing.T) {
 			exportEntries(t, client, []*proto.ExportEntry{entry}, nil)
 
 			got := exp.records()
-			if len(got) != 1 {
-				t.Fatalf("exporter saw %d records, want 1", len(got))
-			}
-			if !bytes.Equal(got[0].payload, tc.body) {
-				t.Errorf("payload %q, want %q", got[0].payload, tc.body)
-			}
+			require.Len(t, got, 1)
+			require.Equal(t, tc.body, got[0].payload)
 		})
 	}
 }
@@ -327,15 +317,9 @@ func TestExporterServerStreamedPayload(t *testing.T) {
 			}
 
 			got := exp.records()
-			if len(got) != 1 {
-				t.Fatalf("exporter saw %d records, want 1", len(got))
-			}
-			if got[0].err != nil {
-				t.Fatalf("read: %v", got[0].err)
-			}
-			if !bytes.Equal(got[0].payload, body) {
-				t.Errorf("payload: got %d bytes, want %d", len(got[0].payload), len(body))
-			}
+			require.Len(t, got, 1)
+			require.NoError(t, got[0].err)
+			require.True(t, bytes.Equal(body, got[0].payload), "payload: got %d bytes, want %d", len(got[0].payload), len(body))
 		})
 	}
 }
@@ -354,12 +338,8 @@ func TestExporterServerPayloadError(t *testing.T) {
 	})
 
 	got := exp.records()
-	if len(got) != 1 {
-		t.Fatalf("exporter saw %d records, want 1", len(got))
-	}
-	if got[0].err == nil || !strings.Contains(got[0].err.Error(), "boom") {
-		t.Errorf("read error %v, want it to mention boom", got[0].err)
-	}
+	require.Len(t, got, 1)
+	require.ErrorContains(t, got[0].err, "boom")
 }
 
 // An exporter that stops reading a record early says so through the
@@ -376,9 +356,8 @@ func TestExporterServerAbortedPayload(t *testing.T) {
 		res = putData(t, client, 1, bytes.Repeat([]byte("x"), 1<<20), nil)
 	})
 
-	if res == nil || !res.Aborted {
-		t.Errorf("PutData response %v, want aborted", res)
-	}
+	require.NotNil(t, res)
+	require.True(t, res.Aborted, "PutData response %v, want aborted", res)
 }
 
 // The whole point: the receive goroutine no longer waits for one
@@ -412,16 +391,10 @@ func TestExporterServerRecordsDoNotWaitOnPayloads(t *testing.T) {
 	})
 
 	got := exp.records()
-	if len(got) != count {
-		t.Fatalf("exporter saw %d records, want %d", len(got), count)
-	}
+	require.Len(t, got, count)
 	for i, rec := range got {
-		if rec.err != nil {
-			t.Errorf("record %d: %v", i, rec.err)
-		}
-		if !bytes.Equal(rec.payload, body) {
-			t.Errorf("record %d: payload is %d bytes, want %d", i, len(rec.payload), len(body))
-		}
+		require.NoError(t, rec.err, "record %d", i)
+		require.True(t, bytes.Equal(body, rec.payload), "record %d: payload is %d bytes, want %d", i, len(rec.payload), len(body))
 	}
 }
 
@@ -434,9 +407,7 @@ func TestExporterServerLegacyProtocol(t *testing.T) {
 	client := dialPlugin(t, exp)
 
 	stream, err := client.Export(t.Context())
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, err)
 
 	done := make(chan struct{})
 	go func() {
@@ -450,9 +421,7 @@ func TestExporterServerLegacyProtocol(t *testing.T) {
 
 	send := func(packet *proto.ExportRequest) {
 		t.Helper()
-		if err := stream.Send(packet); err != nil {
-			t.Errorf("send: %v", err)
-		}
+		require.NoError(t, stream.Send(packet))
 	}
 
 	for _, pathname := range []string{"/a", "/b"} {
@@ -471,27 +440,19 @@ func TestExporterServerLegacyProtocol(t *testing.T) {
 		})
 	}
 
-	if err := stream.CloseSend(); err != nil {
-		t.Fatalf("CloseSend: %v", err)
-	}
+	require.NoError(t, stream.CloseSend())
 
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for the export to finish")
+		require.Fail(t, "timeout waiting for the export to finish")
 	}
 
 	got := exp.records()
-	if len(got) != 2 {
-		t.Fatalf("exporter saw %d records, want 2", len(got))
-	}
+	require.Len(t, got, 2)
 	for i, rec := range got {
-		if rec.err != nil {
-			t.Errorf("record %d: %v", i, rec.err)
-		}
-		if !bytes.Equal(rec.payload, body) {
-			t.Errorf("record %d: payload is %d bytes, want %d", i, len(rec.payload), len(body))
-		}
+		require.NoError(t, rec.err, "record %d", i)
+		require.True(t, bytes.Equal(body, rec.payload), "record %d: payload is %d bytes, want %d", i, len(rec.payload), len(body))
 	}
 }
 
@@ -505,37 +466,31 @@ func TestExporterServerReleasesPayloadsOnClose(t *testing.T) {
 	client := dialPlugin(t, exp)
 
 	stream, err := client.Export(t.Context())
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, err)
 
 	entry := entryOf("/f", 1<<20)
 	entry.Id = 1
-	if err := stream.Send(&proto.ExportRequest{
+	err = stream.Send(&proto.ExportRequest{
 		Packet: &proto.ExportRequest_Entry{Entry: entry},
-	}); err != nil {
-		t.Fatalf("send entry: %v", err)
-	}
+	})
+	require.NoError(t, err, "send entry")
 
 	// Wait until the exporter holds the record, so that we know it
 	// is about to block on a payload we are never going to upload.
 	select {
 	case <-exp.reading:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for the exporter to get the record")
+		require.Fail(t, "timeout waiting for the exporter to get the record")
 	}
 
-	if _, err := client.Close(t.Context(), &proto.CloseRequest{}); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
+	_, err = client.Close(t.Context(), &proto.CloseRequest{})
+	require.NoError(t, err)
 
 	select {
 	case got := <-exp.seen:
-		if got.err == nil {
-			t.Error("the payload read succeeded, want the session error")
-		}
+		require.Error(t, got.err, "the payload read succeeded, want the session error")
 	case <-time.After(5 * time.Second):
-		t.Fatal("the exporter is still blocked on a payload nobody will send")
+		require.Fail(t, "the exporter is still blocked on a payload nobody will send")
 	}
 }
 
@@ -560,42 +515,35 @@ func TestRunExporterOnReleasesPayloadsOnShutdown(t *testing.T) {
 	client := dialOn(t, lis)
 
 	stream, err := client.Export(t.Context())
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, err)
 
 	entry := entryOf("/f", 1<<20)
 	entry.Id = 1
-	if err := stream.Send(&proto.ExportRequest{
+	err = stream.Send(&proto.ExportRequest{
 		Packet: &proto.ExportRequest_Entry{Entry: entry},
-	}); err != nil {
-		t.Fatalf("send entry: %v", err)
-	}
+	})
+	require.NoError(t, err, "send entry")
 
 	select {
 	case <-exp.reading:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for the exporter to get the record")
+		require.Fail(t, "timeout waiting for the exporter to get the record")
 	}
 
 	cancel()
 
 	select {
 	case got := <-exp.seen:
-		if got.err == nil {
-			t.Error("the payload read succeeded, want the shutdown error")
-		}
+		require.Error(t, got.err, "the payload read succeeded, want the shutdown error")
 	case <-time.After(5 * time.Second):
-		t.Fatal("the exporter is still blocked on a payload nobody will send")
+		require.Fail(t, "the exporter is still blocked on a payload nobody will send")
 	}
 
 	select {
 	case err := <-served:
-		if err != nil {
-			t.Fatalf("RunExporterOn: %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
-		t.Fatal("RunExporterOn did not return")
+		require.Fail(t, "RunExporterOn did not return")
 	}
 }
 
@@ -611,10 +559,6 @@ func TestExporterServerAnnouncesPutData(t *testing.T) {
 		Options: &proto.Options{Maxconcurrency: 4},
 		Proto:   "p",
 	})
-	if err != nil {
-		t.Fatalf("Init: %v", err)
-	}
-	if !res.HasPutData {
-		t.Error("the handshake does not announce PutData support")
-	}
+	require.NoError(t, err)
+	require.True(t, res.HasPutData, "the handshake does not announce PutData support")
 }

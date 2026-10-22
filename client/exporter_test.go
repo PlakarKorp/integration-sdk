@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/objects"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -322,7 +322,7 @@ func runExport(t *testing.T, exp *Exporter, n int) (err error, producerFinished 
 	select {
 	case err = <-errCh:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for Export to return")
+		require.Fail(t, "timeout waiting for Export to return")
 	}
 
 	select {
@@ -336,7 +336,7 @@ func runExport(t *testing.T, exp *Exporter, n int) (err error, producerFinished 
 	select {
 	case <-consumer:
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for the result consumer to exit: results was never closed")
+		require.Fail(t, "timeout waiting for the result consumer to exit: results was never closed")
 	}
 
 	return err, producerFinished
@@ -359,9 +359,7 @@ func dialExporter(t *testing.T, srv *fakeExporter) (*grpc.ClientConn, func()) {
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
+	require.NoError(t, err)
 	return conn, func() {
 		_ = conn.Close()
 		s.Stop()
@@ -383,9 +381,7 @@ func dialFailing(t *testing.T, srv *fakeExporter) *Exporter {
 	t.Cleanup(cleanup)
 
 	exp, err := NewExporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
+	require.NoError(t, err)
 	return exp.(*Exporter)
 }
 
@@ -398,12 +394,10 @@ func TestExporter_InitAndGetters(t *testing.T) {
 	defer cleanup()
 
 	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
-	if exp.Origin() != "o" || exp.Type() != "t" || exp.Root() != "/" {
-		t.Errorf("getters: %q %q %q", exp.Origin(), exp.Type(), exp.Root())
-	}
+	require.NoError(t, err)
+	require.Equal(t, "o", exp.Origin())
+	require.Equal(t, "t", exp.Type())
+	require.Equal(t, "/", exp.Root())
 }
 
 func TestExporter_SendsRecordAndChunks(t *testing.T) {
@@ -416,9 +410,7 @@ func TestExporter_SendsRecordAndChunks(t *testing.T) {
 	defer cleanup()
 
 	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	payload := bytes.Repeat([]byte("ab"), 100)
 	rec := &connectors.Record{
@@ -442,32 +434,22 @@ func TestExporter_SendsRecordAndChunks(t *testing.T) {
 	// Drain results.
 	gotResult := false
 	for r := range results {
-		if r == nil {
-			t.Fatalf("nil result")
-		}
+		require.NotNil(t, r)
 		gotResult = true
 	}
-	if !gotResult {
-		t.Errorf("expected at least one result from server")
-	}
+	require.True(t, gotResult, "expected at least one result from server")
 
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("Export: %v", err)
-		}
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout waiting for Export")
+		require.Fail(t, "timeout waiting for Export")
 	}
 
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
-	if len(srv.received) != 1 {
-		t.Fatalf("server saw %d files, want 1", len(srv.received))
-	}
-	if !bytes.Equal(srv.received[0].payload, payload) {
-		t.Errorf("payload mismatch: got %d bytes, want %d", len(srv.received[0].payload), len(payload))
-	}
+	require.Len(t, srv.received, 1)
+	require.Equal(t, payload, srv.received[0].payload)
 }
 
 func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
@@ -476,9 +458,7 @@ func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
 	defer cleanup()
 
 	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
+	require.NoError(t, err)
 
 	rec := &connectors.Record{
 		Pathname: "/d",
@@ -502,9 +482,8 @@ func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
 
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
-	if len(srv.received) != 1 || len(srv.received[0].payload) != 0 {
-		t.Errorf("expected one empty-payload record, got %+v", srv.received)
-	}
+	require.Len(t, srv.received, 1)
+	require.Empty(t, srv.received[0].payload)
 }
 
 func TestExporter_ExportErrorIsReported(t *testing.T) {
@@ -514,15 +493,9 @@ func TestExporter_ExportErrorIsReported(t *testing.T) {
 
 	err, _ := runExport(t, exp, 50)
 
-	if err == nil {
-		t.Fatal("expected the error returned by the plugin's Export(), got nil")
-	}
-	if errors.Is(err, io.EOF) {
-		t.Fatalf("got a bare io.EOF from the send path, want the plugin's error: %v", err)
-	}
-	if !strings.Contains(err.Error(), "simulated export tool failure") {
-		t.Errorf("unexpected error: %v", err)
-	}
+	require.Error(t, err)
+	require.NotErrorIs(t, err, io.EOF, "a bare io.EOF from the send path, want the plugin's error")
+	require.ErrorContains(t, err, "simulated export tool failure")
 }
 
 func TestExporter_ExportErrorDrainsRecords(t *testing.T) {
@@ -532,9 +505,7 @@ func TestExporter_ExportErrorDrainsRecords(t *testing.T) {
 
 	_, producerFinished := runExport(t, exp, 50)
 
-	if !producerFinished {
-		t.Fatal("the producer is still blocked writing to records: the channel was not drained")
-	}
+	require.True(t, producerFinished, "the producer is still blocked writing to records: the channel was not drained")
 }
 
 func TestExporter_ExportCanceledIsUnwrapped(t *testing.T) {
@@ -544,9 +515,7 @@ func TestExporter_ExportCanceledIsUnwrapped(t *testing.T) {
 
 	err, _ := runExport(t, exp, 50)
 
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected context.Canceled, got %v", err)
-	}
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestExporter_ExportUnavailableIsUnwrapped(t *testing.T) {
@@ -556,9 +525,7 @@ func TestExporter_ExportUnavailableIsUnwrapped(t *testing.T) {
 
 	err, _ := runExport(t, exp, 50)
 
-	if err == nil || !strings.Contains(err.Error(), "I/O error") {
-		t.Fatalf("expected Unavailable to be wrapped as I/O error, got %v", err)
-	}
+	require.ErrorContains(t, err, "I/O error")
 }
 
 func TestExporter_NilResultIsRejected(t *testing.T) {
@@ -566,15 +533,8 @@ func TestExporter_NilResultIsRejected(t *testing.T) {
 
 	err, producerFinished := runExport(t, exp, 5)
 
-	if err == nil {
-		t.Fatal("expected an error for a Result-less response, got nil")
-	}
-	if !strings.Contains(err.Error(), "expected a result") {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if !producerFinished {
-		t.Error("the producer is still blocked writing to records")
-	}
+	require.ErrorContains(t, err, "expected a result")
+	require.True(t, producerFinished, "the producer is still blocked writing to records")
 }
 
 func TestExporter_ExportSucceeds(t *testing.T) {
@@ -582,12 +542,8 @@ func TestExporter_ExportSucceeds(t *testing.T) {
 
 	err, producerFinished := runExport(t, exp, 5)
 
-	if err != nil {
-		t.Fatalf("Export returned: %v", err)
-	}
-	if !producerFinished {
-		t.Error("the producer is still blocked writing to records")
-	}
+	require.NoError(t, err)
+	require.True(t, producerFinished, "the producer is still blocked writing to records")
 }
 
 // TestExporter_TransmitRecordsCollapsesEOF tests transmitRecords directly,
@@ -603,15 +559,11 @@ func TestExporter_TransmitRecordsCollapsesEOF(t *testing.T) {
 	defer cleanup()
 
 	exp, err := NewExporter(t.Context(), conn, &connectors.Options{}, "p", nil)
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
+	require.NoError(t, err)
 	g := exp.(*Exporter)
 
 	stream, err := g.client.Export(t.Context())
-	if err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, err)
 
 	records := make(chan *connectors.Record, 1)
 	producer := make(chan struct{})
@@ -625,15 +577,12 @@ func TestExporter_TransmitRecordsCollapsesEOF(t *testing.T) {
 
 	// The first Send unblocks the handler's single Recv, after which it
 	// returns its error and every later Send fails with io.EOF.
-	if err := g.transmitRecords(stream, records); err != nil {
-		t.Fatalf("transmitRecords leaked a transport error, want nil: %v (isEOF=%v)",
-			err, errors.Is(err, io.EOF))
-	}
+	require.NoError(t, g.transmitRecords(stream, records), "transmitRecords leaked a transport error")
 
 	select {
 	case <-producer:
 	case <-time.After(2 * time.Second):
-		t.Fatal("the producer is still blocked writing to records")
+		require.Fail(t, "the producer is still blocked writing to records")
 	}
 }
 
@@ -657,12 +606,8 @@ func dialEntryServer(t *testing.T, srv *fakeExporter, maxConcurrency int) *Expor
 
 	opts := &connectors.Options{MaxConcurrency: maxConcurrency}
 	exp, err := NewExporter(t.Context(), conn, opts, "p", nil)
-	if err != nil {
-		t.Fatalf("NewExporter: %v", err)
-	}
-	if !exp.(*Exporter).hasPutData {
-		t.Fatal("client did not pick up has_put_data")
-	}
+	require.NoError(t, err)
+	require.True(t, exp.(*Exporter).hasPutData, "client did not pick up has_put_data")
 	return exp.(*Exporter)
 }
 
@@ -705,7 +650,7 @@ func exportRecords(t *testing.T, exp *Exporter, recs ...*connectors.Record) erro
 	case err := <-done:
 		return err
 	case <-time.After(5 * time.Second):
-		t.Fatal("timeout waiting for Export to return")
+		require.Fail(t, "timeout waiting for Export to return")
 		return nil
 	}
 }
@@ -727,22 +672,17 @@ func TestExporter_EntryInlinesSmallPayloads(t *testing.T) {
 			srv := newEntryServer()
 			exp := dialEntryServer(t, srv, 4)
 
-			if err := exportRecords(t, exp, recordOf(tc.name, tc.payload, nil)); err != nil {
-				t.Fatalf("Export: %v", err)
-			}
+			require.NoError(t, exportRecords(t, exp, recordOf(tc.name, tc.payload, nil)))
 
 			srv.mu.Lock()
 			defer srv.mu.Unlock()
 
-			if len(srv.received) != 1 {
-				t.Fatalf("server saw %d records, want 1", len(srv.received))
-			}
-			if got := srv.received[0].payload; !bytes.Equal(got, tc.payload) {
-				t.Errorf("payload: got %d bytes, want %d", len(got), len(tc.payload))
-			}
-			if srv.putDataCalls != tc.putDatas {
-				t.Errorf("PutData calls: got %d, want %d", srv.putDataCalls, tc.putDatas)
-			}
+			require.Len(t, srv.received, 1)
+			// bytes.Equal, not require.Equal: an empty payload may
+			// arrive as nil or as an empty slice.
+			require.True(t, bytes.Equal(tc.payload, srv.received[0].payload),
+				"payload: got %d bytes, want %d", len(srv.received[0].payload), len(tc.payload))
+			require.Equal(t, tc.putDatas, srv.putDataCalls, "PutData calls")
 		})
 	}
 }
@@ -755,22 +695,14 @@ func TestExporter_EntrySendsDirectoriesWithoutPayload(t *testing.T) {
 		Pathname: "/d",
 		FileInfo: objects.FileInfo{Lname: "d", Lmode: 0o755 | os.ModeDir},
 	}
-	if err := exportRecords(t, exp, dir); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, exportRecords(t, exp, dir))
 
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 
-	if len(srv.received) != 1 {
-		t.Fatalf("server saw %d records, want 1", len(srv.received))
-	}
-	if got := srv.received[0].payload; got != nil {
-		t.Errorf("directory carried a %d byte payload", len(got))
-	}
-	if srv.putDataCalls != 0 {
-		t.Errorf("directory used %d PutData streams", srv.putDataCalls)
-	}
+	require.Len(t, srv.received, 1)
+	require.Nil(t, srv.received[0].payload, "directory carried a payload")
+	require.Zero(t, srv.putDataCalls, "directory used PutData streams")
 }
 
 // A record we cannot read is the exporter's to report: the session
@@ -792,24 +724,16 @@ func TestExporter_EntryReadFailureIsPerRecord(t *testing.T) {
 			exp := dialEntryServer(t, srv, 4)
 
 			rec := recordOf(tc.name, tc.payload, boom)
-			if err := exportRecords(t, exp, rec, recordOf("ok", []byte("fine"), nil)); err != nil {
-				t.Fatalf("Export: %v", err)
-			}
+			require.NoError(t, exportRecords(t, exp, rec, recordOf("ok", []byte("fine"), nil)))
 
 			srv.mu.Lock()
 			defer srv.mu.Unlock()
 
-			if len(srv.payloadErrs) != 1 {
-				t.Fatalf("server saw %d payload errors, want 1", len(srv.payloadErrs))
-			}
+			require.Len(t, srv.payloadErrs, 1)
 			for _, msg := range srv.payloadErrs {
-				if !strings.Contains(msg, boom.Error()) {
-					t.Errorf("payload error %q does not mention %q", msg, boom)
-				}
+				require.Contains(t, msg, boom.Error())
 			}
-			if len(srv.received) != 1 {
-				t.Errorf("server completed %d records, want 1 (the good one)", len(srv.received))
-			}
+			require.Len(t, srv.received, 1, "only the good record completes")
 		})
 	}
 }
@@ -822,9 +746,7 @@ func TestExporter_EntryAbortedPayloadIsNotAnError(t *testing.T) {
 	exp := dialEntryServer(t, srv, 4)
 
 	big := bytes.Repeat([]byte("x"), inlineThreshold*3)
-	if err := exportRecords(t, exp, recordOf("big", big, nil)); err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, exportRecords(t, exp, recordOf("big", big, nil)))
 }
 
 // Anything else going wrong on a PutData stream is transport, and
@@ -836,12 +758,7 @@ func TestExporter_PutDataFailureFailsExport(t *testing.T) {
 
 	big := bytes.Repeat([]byte("x"), inlineThreshold*3)
 	err := exportRecords(t, exp, recordOf("big", big, nil), recordOf("big2", big, nil))
-	if err == nil {
-		t.Fatal("Export succeeded despite a failing PutData")
-	}
-	if !strings.Contains(err.Error(), "nope") {
-		t.Errorf("Export: %v, want it to mention the PutData failure", err)
-	}
+	require.ErrorContains(t, err, "nope", "want the PutData failure")
 }
 
 // The point of the whole exercise: payloads upload in parallel.
@@ -868,20 +785,16 @@ func TestExporter_EntryPayloadsUploadConcurrently(t *testing.T) {
 		select {
 		case <-srv.putDataArrived:
 		case <-time.After(5 * time.Second):
-			t.Fatal("timeout waiting for concurrent PutData streams")
+			require.Fail(t, "timeout waiting for concurrent PutData streams")
 		}
 	}
 	close(srv.putDataBarrier)
 
-	if err := <-done; err != nil {
-		t.Fatalf("Export: %v", err)
-	}
+	require.NoError(t, <-done)
 
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
-	if len(srv.received) != concurrency {
-		t.Errorf("server completed %d records, want %d", len(srv.received), concurrency)
-	}
+	require.Len(t, srv.received, concurrency)
 }
 
 // A payload failure cancels the payloads still in flight; what comes
@@ -900,12 +813,7 @@ func TestExporter_PutDataFailureBeatsTheCancellation(t *testing.T) {
 	}
 
 	err := exportRecords(t, exp, recs...)
-	if err == nil {
-		t.Fatal("Export succeeded despite a failing PutData")
-	}
-	if !strings.Contains(err.Error(), "nope") {
-		t.Errorf("Export: %v, want the PutData failure rather than its fallout", err)
-	}
+	require.ErrorContains(t, err, "nope", "want the PutData failure rather than its fallout")
 }
 
 type trackingReader struct {
@@ -945,9 +853,7 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 			t.Cleanup(cleanup)
 
 			exp, err := NewExporter(t.Context(), conn, &connectors.Options{MaxConcurrency: 1}, "p", nil)
-			if err != nil {
-				t.Fatalf("NewExporter: %v", err)
-			}
+			require.NoError(t, err)
 
 			readers := make([]*trackingReader, count)
 			records := make(chan *connectors.Record)
@@ -971,16 +877,12 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 			select {
 			case <-done:
 			case <-time.After(5 * time.Second):
-				t.Fatal("timeout waiting for Export to return")
+				require.Fail(t, "timeout waiting for Export to return")
 			}
 
 			for i, rd := range readers {
-				if rd == nil {
-					t.Fatalf("the producer never got to record %d", i)
-				}
-				if !rd.closed.Load() {
-					t.Fatalf("record %d was abandoned with its reader open", i)
-				}
+				require.NotNil(t, rd, "the producer never got to record %d", i)
+				require.True(t, rd.closed.Load(), "record %d was abandoned with its reader open", i)
 			}
 		})
 	}
@@ -1020,11 +922,9 @@ func TestExporter_PayloadIdsAreUniqueAcrossExports(t *testing.T) {
 	for range exports {
 		select {
 		case err := <-errs:
-			if err != nil {
-				t.Fatalf("Export: %v", err)
-			}
+			require.NoError(t, err)
 		case <-time.After(5 * time.Second):
-			t.Fatal("timeout waiting for Export to return")
+			require.Fail(t, "timeout waiting for Export to return")
 		}
 	}
 
@@ -1033,12 +933,8 @@ func TestExporter_PayloadIdsAreUniqueAcrossExports(t *testing.T) {
 
 	seen := make(map[uint64]bool, len(srv.ids))
 	for _, id := range srv.ids {
-		if seen[id] {
-			t.Fatalf("payload id %d handed out twice", id)
-		}
+		require.False(t, seen[id], "payload id %d handed out twice", id)
 		seen[id] = true
 	}
-	if len(srv.ids) != exports*perCall {
-		t.Fatalf("server saw %d ids, want %d", len(srv.ids), exports*perCall)
-	}
+	require.Len(t, srv.ids, exports*perCall)
 }

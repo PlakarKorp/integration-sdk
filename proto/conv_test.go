@@ -10,6 +10,7 @@ import (
 
 	"github.com/PlakarKorp/kloset/connectors"
 	"github.com/PlakarKorp/kloset/objects"
+	"github.com/stretchr/testify/require"
 )
 
 func sampleFileInfo() objects.FileInfo {
@@ -40,23 +41,13 @@ func TestRecordRoundTrip_Regular(t *testing.T) {
 	}
 
 	pb := RecordToProto(rec)
-	if !pb.HasReader {
-		t.Fatalf("regular file with reader should have HasReader=true")
-	}
+	require.True(t, pb.HasReader, "regular file with reader should have HasReader=true")
 
 	got, err := RecordFromProto(pb)
-	if err != nil {
-		t.Fatalf("RecordFromProto: %v", err)
-	}
-	if got.Pathname != rec.Pathname {
-		t.Errorf("pathname mismatch: %q vs %q", got.Pathname, rec.Pathname)
-	}
-	if !got.FileInfo.Equal(&rec.FileInfo) {
-		t.Errorf("fileinfo mismatch: %+v vs %+v", got.FileInfo, rec.FileInfo)
-	}
-	if got.FileAttributes != rec.FileAttributes {
-		t.Errorf("fileattributes mismatch")
-	}
+	require.NoError(t, err)
+	require.Equal(t, rec.Pathname, got.Pathname)
+	require.True(t, got.FileInfo.Equal(&rec.FileInfo), "fileinfo mismatch: %+v vs %+v", got.FileInfo, rec.FileInfo)
+	require.Equal(t, rec.FileAttributes, got.FileAttributes)
 }
 
 func TestRecordRoundTrip_ErrorSkipsFileInfo(t *testing.T) {
@@ -66,23 +57,13 @@ func TestRecordRoundTrip_ErrorSkipsFileInfo(t *testing.T) {
 	}
 
 	pb := RecordToProto(rec)
-	if pb.FileInfo != nil {
-		t.Errorf("error record should not have FileInfo serialised")
-	}
-	if pb.HasReader {
-		t.Errorf("error record should not advertise HasReader")
-	}
-	if pb.Error != "ENOENT" {
-		t.Errorf("error string lost: %q", pb.Error)
-	}
+	require.Nil(t, pb.FileInfo, "error record should not have FileInfo serialised")
+	require.False(t, pb.HasReader, "error record should not advertise HasReader")
+	require.Equal(t, "ENOENT", pb.Error)
 
 	got, err := RecordFromProto(pb)
-	if err != nil {
-		t.Fatalf("RecordFromProto: %v", err)
-	}
-	if got.Err == nil || got.Err.Error() != "ENOENT" {
-		t.Errorf("error not round-tripped: %v", got.Err)
-	}
+	require.NoError(t, err)
+	require.EqualError(t, got.Err, "ENOENT")
 }
 
 func TestRecordRoundTrip_Xattr(t *testing.T) {
@@ -95,20 +76,13 @@ func TestRecordRoundTrip_Xattr(t *testing.T) {
 	}
 
 	pb := RecordToProto(rec)
-	if pb.FileInfo != nil {
-		t.Errorf("xattr record should not include FileInfo")
-	}
-	if !pb.HasReader {
-		t.Errorf("xattr record with a Reader should have HasReader=true")
-	}
+	require.Nil(t, pb.FileInfo, "xattr record should not include FileInfo")
+	require.True(t, pb.HasReader, "xattr record with a Reader should have HasReader=true")
 
 	got, err := RecordFromProto(pb)
-	if err != nil {
-		t.Fatalf("RecordFromProto: %v", err)
-	}
-	if !got.IsXattr || got.XattrName != "user.comment" {
-		t.Errorf("xattr fields lost: %+v", got)
-	}
+	require.NoError(t, err)
+	require.True(t, got.IsXattr)
+	require.Equal(t, "user.comment", got.XattrName)
 }
 
 func TestRecordFromProto_MissingFileInfoIsError(t *testing.T) {
@@ -117,9 +91,8 @@ func TestRecordFromProto_MissingFileInfoIsError(t *testing.T) {
 	bad := &Record{
 		Pathname: "/somewhere",
 	}
-	if _, err := RecordFromProto(bad); !errors.Is(err, ErrInvalidRecord) {
-		t.Fatalf("expected ErrInvalidRecord, got %v", err)
-	}
+	_, err := RecordFromProto(bad)
+	require.ErrorIs(t, err, ErrInvalidRecord)
 }
 
 func TestRecordToProto_NoReader_DirectoryHasNoReader(t *testing.T) {
@@ -131,9 +104,7 @@ func TestRecordToProto_NoReader_DirectoryHasNoReader(t *testing.T) {
 		},
 	}
 	pb := RecordToProto(rec)
-	if pb.HasReader {
-		t.Errorf("directory record should not advertise a reader")
-	}
+	require.False(t, pb.HasReader, "directory record should not advertise a reader")
 }
 
 func TestRecordToProto_RegularButNilReader(t *testing.T) {
@@ -142,9 +113,7 @@ func TestRecordToProto_RegularButNilReader(t *testing.T) {
 		FileInfo: sampleFileInfo(),
 	}
 	pb := RecordToProto(rec)
-	if pb.HasReader {
-		t.Errorf("nil reader should yield HasReader=false")
-	}
+	require.False(t, pb.HasReader, "nil reader should yield HasReader=false")
 }
 
 func TestResultRoundTrip(t *testing.T) {
@@ -156,17 +125,9 @@ func TestResultRoundTrip(t *testing.T) {
 		Err: errors.New("boom"),
 	}
 	pb := ResultToProto(r)
-	if pb.Error != "boom" {
-		t.Errorf("error lost: %q", pb.Error)
-	}
+	require.Equal(t, "boom", pb.Error)
 	got, err := ResultFromProto(pb)
-	if err != nil {
-		t.Fatalf("ResultFromProto: %v", err)
-	}
-	if got.Err == nil || got.Err.Error() != "boom" {
-		t.Errorf("result error lost: %v", got.Err)
-	}
-	if got.Record.Pathname != r.Record.Pathname {
-		t.Errorf("record pathname lost")
-	}
+	require.NoError(t, err)
+	require.EqualError(t, got.Err, "boom")
+	require.Equal(t, r.Record.Pathname, got.Record.Pathname)
 }
