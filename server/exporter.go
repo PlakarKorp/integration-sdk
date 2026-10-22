@@ -114,6 +114,12 @@ func (s *streamReader) Read(p []byte) (n int, err error) {
 		}
 	}
 
+	// don't attempt to read more on the stream, we got to
+	// the end, or we'd consume the next record.
+	if s.eof {
+		return 0, io.EOF
+	}
+
 	fileResponse, err := s.stream.Recv()
 	if err != nil {
 		if err == io.EOF {

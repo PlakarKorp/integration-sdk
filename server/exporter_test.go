@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"net"
@@ -47,6 +48,10 @@ type fakeExporter struct {
 	// acking the record, which closes it once more.
 	closeEarly bool
 
+	// readPastEnd makes the exporter read once more after the end of
+	// the payload, which must be io.EOF again.
+	readPastEnd bool
+
 	// reading and seen, when set, report a record about to be read
 	// and one that has been.
 	reading chan struct{}
@@ -87,6 +92,11 @@ func (f *fakeExporter) consume(record *connectors.Record) *connectors.Result {
 			rd = io.LimitReader(rd, int64(f.readLimit))
 		}
 		got.payload, got.err = io.ReadAll(rd)
+		if f.readPastEnd && got.err == nil {
+			if n, err := rd.Read(make([]byte, 1)); n != 0 || err != io.EOF {
+				got.err = fmt.Errorf("read past the end: got %d, %v", n, err)
+			}
+		}
 		if f.closeEarly {
 			record.Reader.Close()
 		}
@@ -414,6 +424,7 @@ func TestExporterServerLegacyProtocol(t *testing.T) {
 	}{
 		{"read to the end", &fakeExporter{}},
 		{"closed before the ack", &fakeExporter{closeEarly: true}},
+		{"read past the end", &fakeExporter{readPastEnd: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			legacyExport(t, tc.exp)
