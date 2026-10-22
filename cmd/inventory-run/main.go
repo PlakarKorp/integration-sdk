@@ -15,7 +15,6 @@ import (
 	"github.com/PlakarKorp/integration-sdk"
 	"github.com/PlakarKorp/integration-sdk/client"
 	"github.com/PlakarKorp/integration-sdk/stdioconn"
-	"github.com/PlakarKorp/pkg"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -130,7 +129,7 @@ func run(ctx context.Context, inv integration.Inventory) {
 	go func() {
 		defer close(done)
 		for r := range c {
-			if r.Class != pkg.ResourceClassUndefined {
+			if r.Class != integration.ResourceClassUndefined {
 				fmt.Println(show(r))
 			}
 		}

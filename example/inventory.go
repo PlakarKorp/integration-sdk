@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/PlakarKorp/integration-sdk"
-	"github.com/PlakarKorp/pkg"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -44,8 +43,8 @@ func (ex *example) List(ctx context.Context, resources chan<- *integration.Inven
 func (ex *example) listFoos(ctx context.Context, resources chan<- *integration.InventoryEntry) error {
 	for i := range 3 {
 		resources <- &integration.InventoryEntry{
-			Class:    pkg.ResourceClassCompute,
-			SubClass: pkg.ResourceSubClassUnknown,
+			Class:    integration.ResourceClassCompute,
+			SubClass: integration.ResourceSubClassUnknown,
 			Tags:     []string{"foo", "bar", "baz"},
 			URN:      fmt.Sprintf("example:foo:foo-%d", i),
 			Name:     fmt.Sprintf("example-foo-%d", i),
