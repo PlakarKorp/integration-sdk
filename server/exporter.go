@@ -173,8 +173,17 @@ func (s *streamReader) close() error {
 	return nil
 }
 
-func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan<- *connectors.Record) error {
-	defer close(records)
+func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan *connectors.Record) error {
+	defer func() {
+		close(records)
+
+		// export failed so drain the records to avoid leaks.
+		if ctx.Err() != nil {
+			for record := range records {
+				record.Close()
+			}
+		}
+	}()
 
 	for {
 		res, err := stream.Recv()
@@ -202,13 +211,24 @@ func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServ
 			return err
 		}
 
-		records <- record
+		select {
+		case records <- record:
+		case <-ctx.Done():
+			// never handed out, so nobody else is going to
+			// close it.
+			record.Close()
+			return ctx.Err()
+		}
 
 		// the legacy protocol carries the payload on this very
 		// stream, so we cannot read the next record before the
 		// exporter is done with this one.
 		if end != nil {
-			<-end
+			select {
+			case <-end:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }
@@ -356,7 +376,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 	ctx, cancel := context.WithCancel(stream.Context())
 
 	wg.Go(func() error {
-		return plugin.receiveRecords(stream, records)
+		return plugin.receiveRecords(ctx, stream, records)
 	})
 
 	wg.Go(func() error {
@@ -365,6 +385,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 	})
 
 	if err := exp.Export(ctx, records, results); err != nil {
+		cancel()
 		return err
 	}
 

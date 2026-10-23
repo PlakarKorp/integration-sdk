@@ -119,9 +119,68 @@ func (f *fakeExporter) records() []gotRecord {
 	return append([]gotRecord(nil), f.got...)
 }
 
+// failingExporter takes no record and gives up with whatever error it
+// is sent on fail.
+type failingExporter struct {
+	fakeExporter
+	fail chan error
+}
+
+func (f *failingExporter) Export(ctx context.Context, records <-chan *connectors.Record, results chan<- *connectors.Result) error {
+	defer close(results)
+	return <-f.fail
+}
+
 // ---------------------------------------------------------------------------
 // scaffolding
 // ---------------------------------------------------------------------------
+
+// exportStream is an Export stream driven by the test: Recv returns
+// once the test hands it a request, so that the test knows the plugin
+// got it.
+type exportStream struct {
+	grpc.ServerStream
+	ctx context.Context
+	in  chan *proto.ExportRequest
+}
+
+func (s *exportStream) Context() context.Context { return s.ctx }
+
+func (s *exportStream) Send(*proto.ExportResponse) error { return nil }
+
+func (s *exportStream) Recv() (*proto.ExportRequest, error) {
+	select {
+	case req := <-s.in:
+		return req, nil
+	case <-s.ctx.Done():
+		return nil, s.ctx.Err()
+	}
+}
+
+// putDataStream is a PutData stream that sends reqs and keeps the
+// response.
+type putDataStream struct {
+	grpc.ServerStream
+	ctx  context.Context
+	reqs []*proto.PutDataRequest
+	res  *proto.PutDataResponse
+}
+
+func (s *putDataStream) Context() context.Context { return s.ctx }
+
+func (s *putDataStream) Recv() (*proto.PutDataRequest, error) {
+	if len(s.reqs) == 0 {
+		return nil, io.EOF
+	}
+	req := s.reqs[0]
+	s.reqs = s.reqs[1:]
+	return req, nil
+}
+
+func (s *putDataStream) SendAndClose(res *proto.PutDataResponse) error {
+	s.res = res
+	return nil
+}
 
 func dialPlugin(t *testing.T, exp exporter.Exporter) proto.ExporterClient {
 	t.Helper()
@@ -572,6 +631,81 @@ func legacyExport(t *testing.T, exp *fakeExporter) {
 	for i, rec := range got {
 		require.NoError(t, rec.err, "record %d", i)
 		require.True(t, bytes.Equal(body, rec.payload), "record %d: payload is %d bytes, want %d", i, len(rec.payload), len(body))
+	}
+}
+
+// When the exporter fails, the records it never got are released, so
+// that their uploads end instead of writing to payloads nobody reads.
+// This drives the plugin directly: over gRPC there is no telling
+// whether an entry got to the plugin before the exporter gave up.
+func TestExporterServerExportFailure(t *testing.T) {
+	suite := []struct {
+		name        string
+		concurrency int64
+		entries     uint64
+	}{
+		{"queued", 4, 1},
+		{"waiting to be queued", 1, 2},
+	}
+
+	for _, tc := range suite {
+		t.Run(tc.name, func(t *testing.T) {
+			exp := &failingExporter{fail: make(chan error)}
+			plugin := &exporterPluginServer{
+				constructor: func(context.Context, *connectors.Options, string, map[string]string) (exporter.Exporter, error) {
+					return exp, nil
+				},
+			}
+			_, err := plugin.Init(t.Context(), &proto.InitRequest{
+				Options: &proto.Options{Maxconcurrency: tc.concurrency},
+			})
+			require.NoError(t, err)
+
+			// what gRPC does when the handler returns
+			ctx, cancel := context.WithCancel(t.Context())
+			stream := &exportStream{ctx: ctx, in: make(chan *proto.ExportRequest)}
+			exported := make(chan error, 1)
+			go func() {
+				exported <- plugin.Export(stream)
+				cancel()
+			}()
+
+			uploads := make(chan *putDataStream, tc.entries)
+			for id := uint64(1); id <= tc.entries; id++ {
+				entry := entryOf(fmt.Sprintf("/f%d", id), 1<<20)
+				entry.Id = id
+				stream.in <- &proto.ExportRequest{
+					Packet: &proto.ExportRequest_Entry{Entry: entry},
+				}
+
+				pd := &putDataStream{ctx: t.Context()}
+				pd.reqs = append(pd.reqs, &proto.PutDataRequest{
+					Packet: &proto.PutDataRequest_Id{Id: id},
+				})
+				for chunk := range chunked(bytes.Repeat([]byte("x"), 1<<20), 4096) {
+					pd.reqs = append(pd.reqs, &proto.PutDataRequest{
+						Packet: &proto.PutDataRequest_Chunk{Chunk: chunk},
+					})
+				}
+				go func() {
+					assert.NoError(t, plugin.PutData(pd))
+					uploads <- pd
+				}()
+			}
+
+			exp.fail <- errors.New("boom")
+			require.ErrorContains(t, <-exported, "boom")
+
+			for range tc.entries {
+				select {
+				case pd := <-uploads:
+					require.NotNil(t, pd.res)
+					require.True(t, pd.res.Aborted, "PutData response %v, want aborted", pd.res)
+				case <-time.After(5 * time.Second):
+					require.Fail(t, "an upload is still blocked on a payload nobody will read")
+				}
+			}
+		})
 	}
 }
 
