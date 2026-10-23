@@ -205,7 +205,7 @@ func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream g
 		case *proto.ExportRequest_Entry:
 			record, err = plugin.receiveEntry(p.Entry)
 		default:
-			err = fmt.Errorf("bad type; expected a record, got %t", res.Packet)
+			err = fmt.Errorf("bad type; expected a record, got %T", res.Packet)
 		}
 		if err != nil {
 			return err
@@ -298,7 +298,7 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[pr
 
 	id, ok := req.Packet.(*proto.PutDataRequest_Id)
 	if !ok {
-		return fmt.Errorf("bad type; expected an ID, got %t",
+		return fmt.Errorf("bad type; expected an ID, got %T",
 			req.Packet)
 	}
 
@@ -338,7 +338,7 @@ loop:
 			break loop
 
 		default:
-			return fmt.Errorf("bad type; expected data or error, got %t", req.Packet)
+			return fmt.Errorf("bad type; expected data or error, got %T", req.Packet)
 		}
 	}
 
