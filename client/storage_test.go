@@ -35,6 +35,9 @@ type fakeServer struct {
 
 	putBytes int64
 	putErr   error
+	// putEarly makes Put answer as soon as it has the mac, without
+	// waiting for the payload.
+	putEarly bool
 
 	// putEnd, when set, reports how the Put stream ended: nil when the
 	// client closed it, the error otherwise.
@@ -88,6 +91,9 @@ func (f *fakeServer) Put(stream grpc.ClientStreamingServer[proto.PutRequest, pro
 		if len(req.Mac) > 0 {
 			f.receivedMac = append([]byte(nil), req.Mac...)
 			f.receivedType = req.Type
+		}
+		if f.putEarly {
+			break
 		}
 		if len(req.Chunk) > 0 {
 			f.receivedChunks = append(f.receivedChunks, append([]byte(nil), req.Chunk...))
@@ -206,6 +212,37 @@ func TestStore_PutStreamsChunks(t *testing.T) {
 		glued = append(glued, c...)
 	}
 	require.Equal(t, payload, glued)
+}
+
+// endless is a payload that never ends: only the server can stop Put.
+type endless struct{}
+
+func (endless) Read(p []byte) (int, error) { return len(p), nil }
+
+// A server answering before it has the whole payload fails the Put,
+// with its own error when it has one.
+func TestStore_PutCutShort(t *testing.T) {
+	suite := []struct {
+		name string
+		srv  *fakeServer
+		want string
+	}{
+		{"with an error", &fakeServer{putEarly: true, putErr: status.Error(codes.Internal, "disk full")}, "disk full"},
+		{"without an error", &fakeServer{putEarly: true}, "stopped reading"},
+	}
+
+	for _, tc := range suite {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, cleanup := dialTestServer(t, tc.srv)
+			defer cleanup()
+
+			s, err := NewStorage(t.Context(), conn, "p", nil)
+			require.NoError(t, err)
+
+			_, err = s.Put(t.Context(), storage.StorageResourcePackfile, objects.MAC{}, endless{})
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
 }
 
 // A payload we fail to read must not reach the server as a complete,
