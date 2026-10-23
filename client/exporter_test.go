@@ -69,6 +69,10 @@ type fakeExporter struct {
 	putDataBarrier chan struct{}
 	putDataArrived chan struct{}
 
+	// parkPutData parks every PutData handler until its stream is
+	// cancelled.
+	parkPutData bool
+
 	putDataCalls int
 
 	// entries and payloads are joined into received as the two halves
@@ -112,6 +116,11 @@ func (f *fakeExporter) PutData(stream grpc.ClientStreamingServer[proto.PutDataRe
 		if first {
 			return status.Error(codes.Internal, "nope")
 		}
+		<-stream.Context().Done()
+		return stream.Context().Err()
+	}
+
+	if f.parkPutData {
 		<-stream.Context().Done()
 		return stream.Context().Err()
 	}
@@ -937,4 +946,19 @@ func TestExporter_PayloadIdsAreUniqueAcrossExports(t *testing.T) {
 		seen[id] = true
 	}
 	require.Len(t, srv.ids, exports*perCall)
+}
+
+// When the plugin fails the export, the payloads must be properly
+// cancelled and not stop Export() from terminating.
+func TestExporter_ExportErrorCancelsUploads(t *testing.T) {
+	sentinel := errors.New("simulated plugin export failure")
+
+	srv := newEntryServer()
+	srv.earlyExportErr = sentinel
+	srv.parkPutData = true
+	exp := dialEntryServer(t, srv, 4)
+
+	big := bytes.Repeat([]byte("x"), inlineThreshold*3)
+	err := exportRecords(t, exp, recordOf("big", big, nil))
+	require.ErrorContains(t, err, sentinel.Error())
 }

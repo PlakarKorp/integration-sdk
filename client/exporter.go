@@ -412,7 +412,7 @@ func (g *Exporter) Export(ctx context.Context, records <-chan *connectors.Record
 		return unwrap(err)
 	}
 
-	var wg errgroup.Group
+	wg, ctx := errgroup.WithContext(ctx)
 
 	wg.Go(func() error {
 		if g.hasPutData {
