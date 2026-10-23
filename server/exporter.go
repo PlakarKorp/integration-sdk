@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
@@ -91,6 +92,11 @@ type streamReader struct {
 	eof    bool
 	stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse]
 	buf    bytes.Buffer
+
+	// Record.Ok() and Record.Error() close the reader too, so the
+	// exporter may well have closed it already.
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func open(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], end chan struct{}) io.ReadCloser {
@@ -106,6 +112,12 @@ func (s *streamReader) Read(p []byte) (n int, err error) {
 		if n > 0 || err != nil {
 			return n, err
 		}
+	}
+
+	// don't attempt to read more on the stream, we got to
+	// the end, or we'd consume the next record.
+	if s.eof {
+		return 0, io.EOF
 	}
 
 	fileResponse, err := s.stream.Recv()
@@ -130,9 +142,16 @@ func (s *streamReader) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("unexpected response: %v", fileResponse)
 }
 
+func (s *streamReader) Close() error {
+	s.closeOnce.Do(func() {
+		s.closeErr = s.close()
+	})
+	return s.closeErr
+}
+
 // We still drain this in order to avoid a misuse of the API (where someone
 // would request less than what the server is sending), which leads to hangs.
-func (s *streamReader) Close() error {
+func (s *streamReader) close() error {
 	defer close(s.end)
 
 	for !s.eof {
@@ -154,8 +173,17 @@ func (s *streamReader) Close() error {
 	return nil
 }
 
-func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan<- *connectors.Record) error {
-	defer close(records)
+func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan *connectors.Record) error {
+	defer func() {
+		close(records)
+
+		// export failed so drain the records to avoid leaks.
+		if ctx.Err() != nil {
+			for record := range records {
+				record.Close()
+			}
+		}
+	}()
 
 	for {
 		res, err := stream.Recv()
@@ -177,19 +205,30 @@ func (plugin *exporterPluginServer) receiveRecords(stream grpc.BidiStreamingServ
 		case *proto.ExportRequest_Entry:
 			record, err = plugin.receiveEntry(p.Entry)
 		default:
-			err = fmt.Errorf("bad type; expected a record, got %t", res.Packet)
+			err = fmt.Errorf("bad type; expected a record, got %T", res.Packet)
 		}
 		if err != nil {
 			return err
 		}
 
-		records <- record
+		select {
+		case records <- record:
+		case <-ctx.Done():
+			// never handed out, so nobody else is going to
+			// close it.
+			record.Close()
+			return ctx.Err()
+		}
 
 		// the legacy protocol carries the payload on this very
 		// stream, so we cannot read the next record before the
 		// exporter is done with this one.
 		if end != nil {
-			<-end
+			select {
+			case <-end:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}
 	}
 }
@@ -244,38 +283,44 @@ func (plugin *exporterPluginServer) receiveEntry(entry *proto.ExportEntry) (*con
 
 // PutData receives the payload of one record, which the Export stream
 // named with the same id.  Either stream can get here first.
-func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) error {
+func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[proto.PutDataRequest, proto.PutDataResponse]) (err error) {
 	if _, err := plugin.instance.get(); err != nil {
 		return err
 	}
 
-	var wr *io.PipeWriter
+	req, err := stream.Recv()
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("payload without an id")
+	}
+	if err != nil {
+		return err
+	}
 
+	id, ok := req.Packet.(*proto.PutDataRequest_Id)
+	if !ok {
+		return fmt.Errorf("bad type; expected an ID, got %T",
+			req.Packet)
+	}
+
+	wr, err := plugin.inflight.writer(id.Id)
+	if err != nil {
+		return err
+	}
+	defer func() { wr.CloseWithError(err) }()
+
+	// consume the record's body
+loop:
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			if wr != nil {
-				wr.CloseWithError(err)
-			}
 			return err
 		}
 
 		switch p := req.Packet.(type) {
-		case *proto.PutDataRequest_Id:
-			if wr != nil {
-				return fmt.Errorf("payload %d: id sent twice", p.Id)
-			}
-			if wr, err = plugin.inflight.writer(p.Id); err != nil {
-				return err
-			}
-
 		case *proto.PutDataRequest_Chunk:
-			if wr == nil {
-				return fmt.Errorf("payload data before its id")
-			}
 			if _, err := wr.Write(p.Chunk); err != nil {
 				// the exporter closed the record early;
 				// say so rather than let the client take
@@ -287,21 +332,16 @@ func (plugin *exporterPluginServer) PutData(stream grpc.ClientStreamingServer[pr
 			}
 
 		case *proto.PutDataRequest_Error:
-			if wr == nil {
-				return fmt.Errorf("payload error before its id")
-			}
 			// the client could not read this record; the
 			// exporter decides what that means for it.
 			wr.CloseWithError(errors.New(p.Error))
+			break loop
 
 		default:
-			return fmt.Errorf("bad type; expected a payload, got %t", req.Packet)
+			return fmt.Errorf("bad type; expected data or error, got %T", req.Packet)
 		}
 	}
 
-	if wr == nil {
-		return fmt.Errorf("payload without an id")
-	}
 	wr.Close()
 
 	return stream.SendAndClose(&proto.PutDataResponse{})
@@ -336,7 +376,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 	ctx, cancel := context.WithCancel(stream.Context())
 
 	wg.Go(func() error {
-		return plugin.receiveRecords(stream, records)
+		return plugin.receiveRecords(ctx, stream, records)
 	})
 
 	wg.Go(func() error {
@@ -345,6 +385,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 	})
 
 	if err := exp.Export(ctx, records, results); err != nil {
+		cancel()
 		return err
 	}
 
