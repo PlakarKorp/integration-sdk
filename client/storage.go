@@ -211,6 +211,11 @@ func (s *Store) List(ctx context.Context, res storage.StorageResource) ([]object
 }
 
 func (s *Store) Put(ctx context.Context, res storage.StorageResource, mac objects.MAC, rd io.Reader) (int64, error) {
+	// closing the stream would commit a truncated object: cancel it
+	// instead if we fail half way.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	stream, err := s.client.Put(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to start Put stream: %w", unwrap(err))

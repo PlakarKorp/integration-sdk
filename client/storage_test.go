@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"github.com/PlakarKorp/kloset/connectors/storage"
@@ -34,6 +35,10 @@ type fakeServer struct {
 
 	putBytes int64
 	putErr   error
+
+	// putEnd, when set, reports how the Put stream ended: nil when the
+	// client closed it, the error otherwise.
+	putEnd chan error
 
 	receivedMac    []byte
 	receivedType   proto.StorageResource
@@ -75,6 +80,9 @@ func (f *fakeServer) Put(stream grpc.ClientStreamingServer[proto.PutRequest, pro
 			break
 		}
 		if err != nil {
+			if f.putEnd != nil {
+				f.putEnd <- err
+			}
 			return err
 		}
 		if len(req.Mac) > 0 {
@@ -84,6 +92,9 @@ func (f *fakeServer) Put(stream grpc.ClientStreamingServer[proto.PutRequest, pro
 		if len(req.Chunk) > 0 {
 			f.receivedChunks = append(f.receivedChunks, append([]byte(nil), req.Chunk...))
 		}
+	}
+	if f.putEnd != nil {
+		f.putEnd <- nil
 	}
 	if f.putErr != nil {
 		return f.putErr
@@ -195,6 +206,33 @@ func TestStore_PutStreamsChunks(t *testing.T) {
 		glued = append(glued, c...)
 	}
 	require.Equal(t, payload, glued)
+}
+
+// A payload we fail to read must not reach the server as a complete,
+// shorter one.
+
+// If the reader passed to Put() fails, we must cancel the operation
+// (and not leak nor just close it, which would truncate the payload.)
+func TestStore_PutReadErrorCancelsTheStream(t *testing.T) {
+	srv := &fakeServer{putEnd: make(chan error, 1)}
+	conn, cleanup := dialTestServer(t, srv)
+	defer cleanup()
+
+	s, err := NewStorage(t.Context(), conn, "p", nil)
+	require.NoError(t, err)
+
+	sentinel := errors.New("disk-on-fire")
+
+	rd := io.MultiReader(bytes.NewReader([]byte("hello")), &errReader{err: sentinel})
+	_, err = s.Put(t.Context(), storage.StorageResourcePackfile, objects.MAC{}, rd)
+	require.ErrorContains(t, err, sentinel.Error())
+
+	select {
+	case err := <-srv.putEnd:
+		require.Equal(t, codes.Canceled, status.Code(err), "the server saw the stream end with %v", err)
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "the Put stream is still open on the server")
+	}
 }
 
 func TestStore_GetStreamsChunks(t *testing.T) {
