@@ -13,7 +13,7 @@ import (
 )
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "usage: %s [-no-ping] [-config file.json] [-o opt=val] name path [args...]\n",
+	fmt.Fprintf(os.Stderr, "usage: %s [-noping] [-config file.json] [-o opt=val] name path [args...]\n",
 		filepath.Base(os.Args[0]))
 	os.Exit(1)
 }

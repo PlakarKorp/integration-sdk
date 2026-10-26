@@ -211,6 +211,11 @@ func (s *Store) List(ctx context.Context, res storage.StorageResource) ([]object
 }
 
 func (s *Store) Put(ctx context.Context, res storage.StorageResource, mac objects.MAC, rd io.Reader) (int64, error) {
+	// closing the stream would commit a truncated object: cancel it
+	// instead if we fail half way.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	stream, err := s.client.Put(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to start Put stream: %w", unwrap(err))
@@ -225,20 +230,25 @@ func (s *Store) Put(ctx context.Context, res storage.StorageResource, mac object
 		return 0, fmt.Errorf("failed to send mac: %w", unwrap(err))
 	}
 
+	// We can't check EOF on the returned error because SendChunks
+	// can return it in other circumstances as well.
+	var truncated bool
 	n, err := SendChunks(io.NopCloser(rd), func(chunk []byte) error {
-		return stream.Send(&proto.PutRequest{
+		err := stream.Send(&proto.PutRequest{
 			Chunk: chunk,
 		})
+		truncated = errors.Is(err, io.EOF)
+		return err
 	})
-	if err != nil {
-		if err == io.EOF {
-			_, err = stream.CloseAndRecv()
-		}
+	if err != nil && !truncated {
 		return n, unwrap(err)
 	}
 	resp, err := stream.CloseAndRecv()
 	if err != nil {
 		return n, unwrap(err)
+	}
+	if truncated {
+		return n, fmt.Errorf("the integration stopped reading the payload")
 	}
 	return resp.BytesWritten, nil
 }

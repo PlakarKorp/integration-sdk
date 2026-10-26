@@ -59,6 +59,8 @@ func EndpointTypeFromString(t string) (EndpointType, error) {
 	case EndpointHost:
 	case EndpointInet4:
 	case EndpointInet6:
+	case EndpointUUID:
+	case EndpointNetwork:
 	case EndpointIdentifier:
 	default:
 		return e, fmt.Errorf("%w: %s", ErrUnknownEndpointType, t)

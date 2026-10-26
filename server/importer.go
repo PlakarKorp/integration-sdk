@@ -40,7 +40,7 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 		OperatingSystem: req.Options.Os,
 		Architecture:    req.Options.Arch,
 		CWD:             req.Options.Cwd,
-		MaxConcurrency:  int(req.Options.Maxconcurrency),
+		MaxConcurrency:  max(1, int(req.Options.Maxconcurrency)),
 		Excludes:        req.Options.Excludes,
 		NoXattr:         req.Options.Noxattr,
 	}
@@ -51,7 +51,7 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 			return nil, err
 		}
 		plugin.flags = imp.Flags()
-		plugin.maxconcurrency = int(req.Options.Maxconcurrency)
+		plugin.maxconcurrency = opts.MaxConcurrency
 		plugin.readers = conn.NewHoldingReaders()
 		return imp, nil
 	})
