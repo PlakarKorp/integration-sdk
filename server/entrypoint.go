@@ -24,7 +24,7 @@ func EntrypointImporter(ctx context.Context, ctor importer.ImporterFn, args []st
 
 	if err := RunImporter(ctx, ctor); err != nil {
 		if !errors.Is(err, io.EOF) {
-			fmt.Fprintf(os.Stderr, "importer plugin process exited with unexpected error: %s", err)
+			fmt.Fprintf(os.Stderr, "importer plugin process exited with unexpected error: %s\n", err)
 			os.Exit(1)
 		}
 	}
@@ -37,7 +37,7 @@ func EntrypointExporter(ctx context.Context, ctor exporter.ExporterFn, args []st
 
 	if err := RunExporter(ctx, ctor); err != nil {
 		if !errors.Is(err, io.EOF) {
-			fmt.Fprintf(os.Stderr, "exporter plugin process exited with unexpected error: %s", err)
+			fmt.Fprintf(os.Stderr, "exporter plugin process exited with unexpected error: %s\n", err)
 			os.Exit(1)
 		}
 	}
@@ -50,7 +50,7 @@ func EntrypointStorage(ctx context.Context, ctor storage.StoreFn, args []string)
 
 	if err := RunStorage(ctx, ctor); err != nil {
 		if !errors.Is(err, io.EOF) {
-			fmt.Fprintf(os.Stderr, "storage plugin process exited with unexpected error: %s", err)
+			fmt.Fprintf(os.Stderr, "storage plugin process exited with unexpected error: %s\n", err)
 			os.Exit(1)
 		}
 	}
