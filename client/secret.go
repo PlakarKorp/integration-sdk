@@ -12,7 +12,7 @@ type secretClient struct {
 	client secret.SecretProviderClient
 }
 
-func NewSecretProvider(ctx context.Context, conn *grpc.ClientConn, config map[string]string) (integration.SecretProvider, error) {
+func NewSecretProvider(ctx context.Context, conn grpc.ClientConnInterface, config map[string]string) (integration.SecretProvider, error) {
 	client := secret.NewSecretProviderClient(conn)
 
 	if _, err := client.Init(ctx, &secret.InitRequest{Config: config}); err != nil {
