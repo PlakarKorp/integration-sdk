@@ -43,7 +43,7 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 	}
 
 	opts := connectors.Options{
-		MaxConcurrency:  int(req.Options.Maxconcurrency),
+		MaxConcurrency:  max(1, int(req.Options.Maxconcurrency)),
 		Hostname:        req.Options.Hostname,
 		OperatingSystem: req.Options.Os,
 		Architecture:    req.Options.Arch,
@@ -57,8 +57,8 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 		if err != nil {
 			return nil, err
 		}
-		plugin.maxConcurrency = int(req.Options.Maxconcurrency)
 		plugin.flags = exp.Flags()
+		plugin.maxConcurrency = opts.MaxConcurrency
 		return exp, nil
 	})
 	if err != nil {
