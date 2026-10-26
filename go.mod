@@ -1,6 +1,6 @@
 module github.com/PlakarKorp/integration-sdk
 
-go 1.27.1
+go 1.26.10
 
 require (
 	github.com/PlakarKorp/kloset v1.1.8
