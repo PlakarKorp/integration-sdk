@@ -217,22 +217,20 @@ func (plugin *storagePluginServer) Close(ctx context.Context, req *proto.CloseRe
 }
 
 // RunStorage starts the gRPC server for the storage plugin.
-func RunStorage(ctx context.Context, constructor storage.StoreFn) error {
+func RunStorage(constructor storage.StoreFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
 	}
 	defer closer.Close()
 
-	return RunStorageOn(ctx, constructor, listener)
+	return RunStorageOn(constructor, listener)
 }
 
-func RunStorageOn(ctx context.Context, constructor storage.StoreFn, listener net.Listener) error {
+func RunStorageOn(constructor storage.StoreFn, listener net.Listener) error {
 	server := grpc.NewServer()
-
 	proto.RegisterStoreServer(server, &storagePluginServer{
 		constructor: constructor,
 	})
-
-	return serve(ctx, server, listener)
+	return server.Serve(listener)
 }

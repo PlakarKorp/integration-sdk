@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"os"
 
 	"github.com/PlakarKorp/integration-sdk/example"
@@ -9,5 +8,5 @@ import (
 )
 
 func main() {
-	server.EntrypointInventory(context.Background(), example.NewInventory, os.Args)
+	server.EntrypointInventory(example.NewInventory, os.Args)
 }
