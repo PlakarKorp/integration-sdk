@@ -81,6 +81,5 @@ func RunSecretProviderOn(constructor SecretProviderFn, listener net.Listener) er
 	secret.RegisterSecretProviderServer(server, &secretServer{
 		constructor: constructor,
 	})
-
 	return server.Serve(listener)
 }

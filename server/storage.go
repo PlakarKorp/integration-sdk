@@ -229,13 +229,8 @@ func RunStorage(constructor storage.StoreFn) error {
 
 func RunStorageOn(constructor storage.StoreFn, listener net.Listener) error {
 	server := grpc.NewServer()
-
 	proto.RegisterStoreServer(server, &storagePluginServer{
 		constructor: constructor,
 	})
-
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+	return server.Serve(listener)
 }

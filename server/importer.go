@@ -229,9 +229,5 @@ func RunImporterOn(constructor importer.ImporterFn, listener net.Listener) error
 	proto.RegisterImporterServer(server, &importerPluginServer{
 		constructor: constructor,
 	})
-
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+	return server.Serve(listener)
 }

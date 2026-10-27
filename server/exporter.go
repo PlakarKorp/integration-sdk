@@ -424,12 +424,8 @@ func RunExporter(constructor exporter.ExporterFn) error {
 
 func RunExporterOn(constructor exporter.ExporterFn, listener net.Listener) error {
 	server := grpc.NewServer()
-
-	plugin := &exporterPluginServer{constructor: constructor}
-	proto.RegisterExporterServer(server, plugin)
-
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+	proto.RegisterExporterServer(server, &exporterPluginServer{
+		constructor: constructor,
+	})
+	return server.Serve(listener)
 }

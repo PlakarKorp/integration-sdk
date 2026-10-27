@@ -121,8 +121,5 @@ func RunInventoryOn(constructor InventoryFn, listener net.Listener) error {
 	inventory.RegisterInventoryServer(server, &grpcInventoryServer{
 		constructor: constructor,
 	})
-	if err := server.Serve(listener); err != nil {
-		return err
-	}
-	return nil
+	return server.Serve(listener)
 }
