@@ -8,13 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/objects"
+	"github.com/PlakarKorp/integration-sdk"
 	"github.com/stretchr/testify/require"
 )
 
-func sampleFileInfo() objects.FileInfo {
-	return objects.FileInfo{
+func sampleFileInfo() integration.FileInfo {
+	return integration.FileInfo{
 		Lname:      "hello.txt",
 		Lsize:      1234,
 		Lmode:      0o644,
@@ -31,7 +30,7 @@ func sampleFileInfo() objects.FileInfo {
 }
 
 func TestRecordRoundTrip_Regular(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname:           "/etc/hello.txt",
 		FileInfo:           sampleFileInfo(),
 		Target:             "",
@@ -51,7 +50,7 @@ func TestRecordRoundTrip_Regular(t *testing.T) {
 }
 
 func TestRecordRoundTrip_ErrorSkipsFileInfo(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/missing",
 		Err:      errors.New("ENOENT"),
 	}
@@ -67,11 +66,11 @@ func TestRecordRoundTrip_ErrorSkipsFileInfo(t *testing.T) {
 }
 
 func TestRecordRoundTrip_Xattr(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname:  "/etc/hello.txt",
 		IsXattr:   true,
 		XattrName: "user.comment",
-		XattrType: objects.AttributeExtended,
+		XattrType: integration.AttributeExtended,
 		Reader:    io.NopCloser(strings.NewReader("data")),
 	}
 
@@ -96,9 +95,9 @@ func TestRecordFromProto_MissingFileInfoIsError(t *testing.T) {
 }
 
 func TestRecordToProto_NoReader_DirectoryHasNoReader(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/etc",
-		FileInfo: objects.FileInfo{
+		FileInfo: integration.FileInfo{
 			Lname: "etc",
 			Lmode: fs.ModeDir | 0o755,
 		},
@@ -108,7 +107,7 @@ func TestRecordToProto_NoReader_DirectoryHasNoReader(t *testing.T) {
 }
 
 func TestRecordToProto_RegularButNilReader(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/etc/hello.txt",
 		FileInfo: sampleFileInfo(),
 	}
@@ -117,8 +116,8 @@ func TestRecordToProto_RegularButNilReader(t *testing.T) {
 }
 
 func TestResultRoundTrip(t *testing.T) {
-	r := &connectors.Result{
-		Record: connectors.Record{
+	r := &integration.Result{
+		Record: integration.Record{
 			Pathname: "/etc/hello.txt",
 			FileInfo: sampleFileInfo(),
 		},

@@ -6,9 +6,7 @@ import (
 	"io"
 	"os"
 
-	exporter "github.com/PlakarKorp/kloset/connectors/exporter"
-	importer "github.com/PlakarKorp/kloset/connectors/importer"
-	storage "github.com/PlakarKorp/kloset/connectors/storage"
+	"github.com/PlakarKorp/integration-sdk"
 )
 
 func checkArgs(args []string) {
@@ -18,7 +16,7 @@ func checkArgs(args []string) {
 	}
 }
 
-func EntrypointImporter(ctor importer.ImporterFn, args []string) {
+func EntrypointImporter(ctor integration.ImporterFn, args []string) {
 	checkArgs(args)
 
 	if err := RunImporter(ctor); err != nil {
@@ -31,7 +29,7 @@ func EntrypointImporter(ctor importer.ImporterFn, args []string) {
 	os.Exit(0)
 }
 
-func EntrypointExporter(ctor exporter.ExporterFn, args []string) {
+func EntrypointExporter(ctor integration.ExporterFn, args []string) {
 	checkArgs(args)
 
 	if err := RunExporter(ctor); err != nil {
@@ -44,7 +42,7 @@ func EntrypointExporter(ctor exporter.ExporterFn, args []string) {
 	os.Exit(0)
 }
 
-func EntrypointStorage(ctor storage.StoreFn, args []string) {
+func EntrypointStorage(ctor integration.StoreFn, args []string) {
 	checkArgs(args)
 
 	if err := RunStorage(ctor); err != nil {

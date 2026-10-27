@@ -8,12 +8,10 @@ import (
 	"io/fs"
 	"net"
 
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/location"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/connectors/importer"
-	"github.com/PlakarKorp/kloset/location"
-	"github.com/PlakarKorp/kloset/objects"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,8 +19,8 @@ import (
 )
 
 type importerPluginServer struct {
-	constructor    importer.ImporterFn
-	instance       instance[importer.Importer]
+	constructor    integration.ImporterFn
+	instance       instance[integration.Importer]
 	flags          location.Flags
 	maxconcurrency int
 	readers        *conn.HoldingReaders
@@ -35,7 +33,7 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 		return nil, status.Error(codes.InvalidArgument, "missing options")
 	}
 
-	opts := connectors.Options{
+	opts := integration.Options{
 		Hostname:        req.Options.Hostname,
 		OperatingSystem: req.Options.Os,
 		Architecture:    req.Options.Arch,
@@ -45,7 +43,7 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 		NoXattr:         req.Options.Noxattr,
 	}
 
-	imp, err := plugin.instance.init(func() (importer.Importer, error) {
+	imp, err := plugin.instance.init(func() (integration.Importer, error) {
 		imp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
 		if err != nil {
 			return nil, err
@@ -75,7 +73,7 @@ func (plugin *importerPluginServer) Ping(ctx context.Context, req *proto.PingReq
 	return nil, imp.Ping(ctx)
 }
 
-func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], records <-chan *connectors.Record) error {
+func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], records <-chan *integration.Record) error {
 	for record := range records {
 		hdr := proto.ImportResponse{
 			Record: conn.RecordToProto(record),
@@ -93,7 +91,7 @@ func (plugin *importerPluginServer) sendRecords(stream grpc.BidiStreamingServer[
 	return stream.Send(&proto.ImportResponse{Finished: true})
 }
 
-func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], results chan<- *connectors.Result) error {
+func (plugin *importerPluginServer) receiveResults(stream grpc.BidiStreamingServer[proto.ImportRequest, proto.ImportResponse], results chan<- *integration.Result) error {
 	if results != nil {
 		defer close(results)
 	}
@@ -130,14 +128,14 @@ func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto
 
 	var (
 		size    = plugin.maxconcurrency
-		records = make(chan *connectors.Record, size)
+		records = make(chan *integration.Record, size)
 
 		wg errgroup.Group
 	)
 
-	var results chan *connectors.Result
+	var results chan *integration.Result
 	if (plugin.flags & location.FLAG_NEEDACK) != 0 {
-		results = make(chan *connectors.Result, size)
+		results = make(chan *integration.Result, size)
 	}
 
 	ctx, cancel := context.WithCancel(stream.Context())
@@ -167,11 +165,11 @@ func (plugin *importerPluginServer) Open(req *proto.OpenRequest, stream grpc.Ser
 		return err
 	}
 
-	rd := plugin.readers.Get(&connectors.Record{
+	rd := plugin.readers.Get(&integration.Record{
 		Pathname:  req.Record.Pathname,
 		IsXattr:   req.Record.IsXattr,
 		XattrName: req.Record.XattrName,
-		XattrType: objects.Attribute(req.Record.XattrType),
+		XattrType: integration.Attribute(req.Record.XattrType),
 		Target:    req.Record.Target,
 	})
 	if rd == nil {
@@ -214,7 +212,7 @@ func (plugin *importerPluginServer) Close(ctx context.Context, req *proto.CloseR
 }
 
 // RunImporter starts the gRPC server for the importer plugin.
-func RunImporter(constructor importer.ImporterFn) error {
+func RunImporter(constructor integration.ImporterFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
@@ -224,7 +222,7 @@ func RunImporter(constructor importer.ImporterFn) error {
 	return RunImporterOn(constructor, listener)
 }
 
-func RunImporterOn(constructor importer.ImporterFn, listener net.Listener) error {
+func RunImporterOn(constructor integration.ImporterFn, listener net.Listener) error {
 	server := grpc.NewServer()
 	proto.RegisterImporterServer(server, &importerPluginServer{
 		constructor: constructor,

@@ -13,12 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/location"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/connectors/exporter"
-	"github.com/PlakarKorp/kloset/location"
-	"github.com/PlakarKorp/kloset/objects"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -65,7 +63,7 @@ func (f *fakeExporter) Flags() location.Flags       { return 0 }
 func (f *fakeExporter) Ping(context.Context) error  { return nil }
 func (f *fakeExporter) Close(context.Context) error { return nil }
 
-func (f *fakeExporter) Export(ctx context.Context, records <-chan *connectors.Record, results chan<- *connectors.Result) error {
+func (f *fakeExporter) Export(ctx context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	defer close(results)
 
 	var wg sync.WaitGroup
@@ -79,7 +77,7 @@ func (f *fakeExporter) Export(ctx context.Context, records <-chan *connectors.Re
 	return nil
 }
 
-func (f *fakeExporter) consume(record *connectors.Record) *connectors.Result {
+func (f *fakeExporter) consume(record *integration.Record) *integration.Result {
 	got := gotRecord{pathname: record.Pathname}
 
 	if f.reading != nil {
@@ -126,7 +124,7 @@ type failingExporter struct {
 	fail chan error
 }
 
-func (f *failingExporter) Export(ctx context.Context, records <-chan *connectors.Record, results chan<- *connectors.Result) error {
+func (f *failingExporter) Export(ctx context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	defer close(results)
 	return <-f.fail
 }
@@ -182,13 +180,13 @@ func (s *putDataStream) SendAndClose(res *proto.PutDataResponse) error {
 	return nil
 }
 
-func dialPlugin(t *testing.T, exp exporter.Exporter) proto.ExporterClient {
+func dialPlugin(t *testing.T, exp integration.Exporter) proto.ExporterClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
 	proto.RegisterExporterServer(srv, &exporterPluginServer{
-		constructor: func(context.Context, *connectors.Options, string, map[string]string) (exporter.Exporter, error) {
+		constructor: func(context.Context, *integration.Options, string, map[string]string) (integration.Exporter, error) {
 			return exp, nil
 		},
 	})
@@ -222,9 +220,9 @@ func dialOn(t *testing.T, lis *bufconn.Listener) proto.ExporterClient {
 }
 
 func recordOf(pathname string, size int64) *conn.Record {
-	return conn.RecordToProto(&connectors.Record{
+	return conn.RecordToProto(&integration.Record{
 		Pathname: pathname,
-		FileInfo: objects.FileInfo{Lname: pathname, Lsize: size, Lmode: 0o644},
+		FileInfo: integration.FileInfo{Lname: pathname, Lsize: size, Lmode: 0o644},
 		// RecordToProto only looks at whether this is set
 		Reader: io.NopCloser(strings.NewReader("")),
 	})
@@ -652,7 +650,7 @@ func TestExporterServerExportFailure(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			exp := &failingExporter{fail: make(chan error)}
 			plugin := &exporterPluginServer{
-				constructor: func(context.Context, *connectors.Options, string, map[string]string) (exporter.Exporter, error) {
+				constructor: func(context.Context, *integration.Options, string, map[string]string) (integration.Exporter, error) {
 					return exp, nil
 				},
 			}
@@ -750,7 +748,7 @@ func TestExporterServerReleasesPayloadsOnClose(t *testing.T) {
 // the handshake is what puts a client on the entry protocol.
 func TestExporterServerAnnouncesPutData(t *testing.T) {
 	plugin := &exporterPluginServer{
-		constructor: func(context.Context, *connectors.Options, string, map[string]string) (exporter.Exporter, error) {
+		constructor: func(context.Context, *integration.Options, string, map[string]string) (integration.Exporter, error) {
 			return &fakeExporter{}, nil
 		},
 	}

@@ -8,8 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/objects"
+	"github.com/PlakarKorp/integration-sdk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +27,7 @@ func TestHoldingReaders_TrackGetDelete(t *testing.T) {
 	h := NewHoldingReaders()
 
 	rc := &countingReadCloser{Reader: strings.NewReader("hi")}
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/etc/hello.txt",
 		Reader:   rc,
 	}
@@ -46,25 +45,25 @@ func TestHoldingReaders_XattrKeySeparators(t *testing.T) {
 	r2 := &countingReadCloser{Reader: strings.NewReader("b")}
 	r3 := &countingReadCloser{Reader: strings.NewReader("c")}
 
-	ext := &connectors.Record{
+	ext := &integration.Record{
 		Pathname:  "/file",
 		IsXattr:   true,
 		XattrName: "user.x",
-		XattrType: objects.AttributeExtended,
+		XattrType: integration.AttributeExtended,
 		Reader:    r1,
 	}
-	ads := &connectors.Record{
+	ads := &integration.Record{
 		Pathname:  "/file",
 		IsXattr:   true,
 		XattrName: "user.x",
-		XattrType: objects.AttributeADS,
+		XattrType: integration.AttributeADS,
 		Reader:    r2,
 	}
-	custom := &connectors.Record{
+	custom := &integration.Record{
 		Pathname:  "/file",
 		IsXattr:   true,
 		XattrName: "user.x",
-		XattrType: objects.AttributeCustom,
+		XattrType: integration.AttributeCustom,
 		Reader:    r3,
 	}
 
@@ -83,8 +82,8 @@ func TestHoldingReaders_CloseDrainsRemaining(t *testing.T) {
 	rc1 := &countingReadCloser{Reader: strings.NewReader("x")}
 	rc2 := &countingReadCloser{Reader: strings.NewReader("y"), err: errors.New("boom")}
 
-	h.Track(&connectors.Record{Pathname: "/a", Reader: rc1})
-	h.Track(&connectors.Record{Pathname: "/b", Reader: rc2})
+	h.Track(&integration.Record{Pathname: "/a", Reader: rc1})
+	h.Track(&integration.Record{Pathname: "/b", Reader: rc2})
 
 	err := h.Close()
 	require.True(t, rc1.closed.Load(), "Close did not close all tracked readers")
@@ -102,7 +101,7 @@ func TestHoldingReaders_ConcurrentTrackGet(t *testing.T) {
 		i := i
 		go func() {
 			defer wg.Done()
-			rec := &connectors.Record{
+			rec := &integration.Record{
 				Pathname: pathFor(i),
 				Reader:   &countingReadCloser{Reader: strings.NewReader("x")},
 			}
@@ -110,7 +109,7 @@ func TestHoldingReaders_ConcurrentTrackGet(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			rec := &connectors.Record{Pathname: pathFor(i)}
+			rec := &integration.Record{Pathname: pathFor(i)}
 			_ = h.Get(rec)
 		}()
 	}

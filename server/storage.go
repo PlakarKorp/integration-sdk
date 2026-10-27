@@ -5,24 +5,21 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/PlakarKorp/kloset/objects"
-
+	"github.com/PlakarKorp/integration-sdk"
 	"github.com/PlakarKorp/integration-sdk/client"
 	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
-	"github.com/PlakarKorp/kloset/connectors/storage"
-
 	"google.golang.org/grpc"
 )
 
 type storagePluginServer struct {
-	constructor storage.StoreFn
-	instance    instance[storage.Store]
+	constructor integration.StoreFn
+	instance    instance[integration.Store]
 
 	proto.UnimplementedStoreServer
 }
 
 func (plugin *storagePluginServer) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
-	store, err := plugin.instance.init(func() (storage.Store, error) {
+	store, err := plugin.instance.init(func() (integration.Store, error) {
 		return plugin.constructor(ctx, req.Proto, req.Config)
 	})
 	if err != nil {
@@ -109,8 +106,8 @@ func (plugin *storagePluginServer) List(ctx context.Context, req *proto.ListRequ
 		return nil, err
 	}
 
-	ctx = storage.WithFlag(ctx, storage.StorageFlag(req.Flags))
-	macs, err := store.List(ctx, storage.StorageResource(req.Type))
+	ctx = integration.WithFlag(ctx, integration.StorageFlag(req.Flags))
+	macs, err := store.List(ctx, integration.StorageResource(req.Type))
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +133,9 @@ func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[proto.P
 	}
 
 	var (
-		res = storage.StorageResource(req.Type)
-		mac = objects.MAC(req.Mac)
-		ctx = storage.WithFlag(stream.Context(), storage.StorageFlag(req.Flags))
+		res = integration.StorageResource(req.Type)
+		mac = integration.MAC(req.Mac)
+		ctx = integration.WithFlag(stream.Context(), integration.StorageFlag(req.Flags))
 	)
 
 	size, err := store.Put(ctx, res, mac, client.ReceiveChunks(func() ([]byte, error) {
@@ -162,15 +159,15 @@ func (plugin *storagePluginServer) Get(req *proto.GetRequest, stream grpc.Server
 	}
 
 	var (
-		res = storage.StorageResource(req.Type)
-		mac = objects.MAC(req.Mac)
-		ctx = storage.WithFlag(stream.Context(), storage.StorageFlag(req.Flags))
+		res = integration.StorageResource(req.Type)
+		mac = integration.MAC(req.Mac)
+		ctx = integration.WithFlag(stream.Context(), integration.StorageFlag(req.Flags))
 
-		rg *storage.Range
+		rg *integration.Range
 	)
 
 	if r := req.Range; r != nil {
-		rg = &storage.Range{
+		rg = &integration.Range{
 			Offset: r.Offset,
 			Length: r.Length,
 		}
@@ -196,8 +193,8 @@ func (plugin *storagePluginServer) Delete(ctx context.Context, req *proto.Delete
 		return nil, err
 	}
 
-	ctx = storage.WithFlag(ctx, storage.StorageFlag(req.Flags))
-	if err := store.Delete(ctx, storage.StorageResource(req.Type), objects.MAC(req.Mac)); err != nil {
+	ctx = integration.WithFlag(ctx, integration.StorageFlag(req.Flags))
+	if err := store.Delete(ctx, integration.StorageResource(req.Type), integration.MAC(req.Mac)); err != nil {
 		return nil, err
 	}
 
@@ -217,7 +214,7 @@ func (plugin *storagePluginServer) Close(ctx context.Context, req *proto.CloseRe
 }
 
 // RunStorage starts the gRPC server for the storage plugin.
-func RunStorage(constructor storage.StoreFn) error {
+func RunStorage(constructor integration.StoreFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
@@ -227,7 +224,7 @@ func RunStorage(constructor storage.StoreFn) error {
 	return RunStorageOn(constructor, listener)
 }
 
-func RunStorageOn(constructor storage.StoreFn, listener net.Listener) error {
+func RunStorageOn(constructor integration.StoreFn, listener net.Listener) error {
 	server := grpc.NewServer()
 	proto.RegisterStoreServer(server, &storagePluginServer{
 		constructor: constructor,

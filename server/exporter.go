@@ -9,11 +9,10 @@ import (
 	"net"
 	"sync"
 
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/location"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/connectors/exporter"
-	"github.com/PlakarKorp/kloset/location"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -21,8 +20,8 @@ import (
 )
 
 type exporterPluginServer struct {
-	constructor    exporter.ExporterFn
-	instance       instance[exporter.Exporter]
+	constructor    integration.ExporterFn
+	instance       instance[integration.Exporter]
 	maxConcurrency int
 	flags          location.Flags
 
@@ -42,7 +41,7 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 		return nil, status.Error(codes.InvalidArgument, "missing options")
 	}
 
-	opts := connectors.Options{
+	opts := integration.Options{
 		MaxConcurrency:  max(1, int(req.Options.Maxconcurrency)),
 		Hostname:        req.Options.Hostname,
 		OperatingSystem: req.Options.Os,
@@ -52,7 +51,7 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 		NoXattr:         req.Options.Noxattr,
 	}
 
-	exp, err := plugin.instance.init(func() (exporter.Exporter, error) {
+	exp, err := plugin.instance.init(func() (integration.Exporter, error) {
 		exp, err := plugin.constructor(ctx, &opts, req.Proto, req.Config)
 		if err != nil {
 			return nil, err
@@ -173,7 +172,7 @@ func (s *streamReader) close() error {
 	return nil
 }
 
-func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan *connectors.Record) error {
+func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan *integration.Record) error {
 	defer func() {
 		close(records)
 
@@ -195,7 +194,7 @@ func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream g
 		}
 
 		var (
-			record *connectors.Record
+			record *integration.Record
 			end    chan struct{}
 		)
 
@@ -235,7 +234,7 @@ func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream g
 
 // receiveRecord handles the legacy protocol, where the payload follows
 // the record on the Export stream.
-func (plugin *exporterPluginServer) receiveRecord(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], r *conn.Record) (*connectors.Record, chan struct{}, error) {
+func (plugin *exporterPluginServer) receiveRecord(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], r *conn.Record) (*integration.Record, chan struct{}, error) {
 	record, err := conn.RecordFromProto(r)
 	if err != nil {
 		return nil, nil, err
@@ -253,7 +252,7 @@ func (plugin *exporterPluginServer) receiveRecord(stream grpc.BidiStreamingServe
 
 // receiveEntry handles the entry protocol, where the payload is either
 // inline or on a PutData stream of its own.
-func (plugin *exporterPluginServer) receiveEntry(entry *proto.ExportEntry) (*connectors.Record, error) {
+func (plugin *exporterPluginServer) receiveEntry(entry *proto.ExportEntry) (*integration.Record, error) {
 	if entry.Record == nil {
 		return nil, fmt.Errorf("entry without a record")
 	}
@@ -347,7 +346,7 @@ loop:
 	return stream.SendAndClose(&proto.PutDataResponse{})
 }
 
-func (plugin *exporterPluginServer) transmitResults(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], results <-chan *connectors.Result) error {
+func (plugin *exporterPluginServer) transmitResults(stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], results <-chan *integration.Result) error {
 	for result := range results {
 		hdr := proto.ExportResponse{
 			Result: conn.ResultToProto(result),
@@ -368,8 +367,8 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 
 	var (
 		size    = plugin.maxConcurrency
-		records = make(chan *connectors.Record, size)
-		results = make(chan *connectors.Result, size)
+		records = make(chan *integration.Record, size)
+		results = make(chan *integration.Result, size)
 		wg      = errgroup.Group{}
 	)
 
@@ -412,7 +411,7 @@ func (plugin *exporterPluginServer) Close(ctx context.Context, req *proto.CloseR
 // RunExporter launches the gRPC server for an exporter plugin.
 //
 // The given constructor will be used to initialize the exporter instance.
-func RunExporter(constructor exporter.ExporterFn) error {
+func RunExporter(constructor integration.ExporterFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
@@ -422,7 +421,7 @@ func RunExporter(constructor exporter.ExporterFn) error {
 	return RunExporterOn(constructor, listener)
 }
 
-func RunExporterOn(constructor exporter.ExporterFn, listener net.Listener) error {
+func RunExporterOn(constructor integration.ExporterFn, listener net.Listener) error {
 	server := grpc.NewServer()
 	proto.RegisterExporterServer(server, &exporterPluginServer{
 		constructor: constructor,

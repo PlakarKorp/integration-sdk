@@ -8,10 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/PlakarKorp/integration-sdk"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/objects"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -121,13 +120,13 @@ func (f *fakeImporter) Open(req *proto.OpenRequest, stream grpc.ServerStreamingS
 
 // runImport is basically a no-op kloset's snapshot.Builder.importSource.
 // It consumes and acks records, returns seen records and error
-func runImport(t *testing.T, imp *Importer) (error, []*connectors.Record) {
+func runImport(t *testing.T, imp *Importer) (error, []*integration.Record) {
 	t.Helper()
 
-	records := make(chan *connectors.Record, 4)
-	results := make(chan *connectors.Result, 4)
+	records := make(chan *integration.Record, 4)
+	results := make(chan *integration.Result, 4)
 
-	var seen []*connectors.Record
+	var seen []*integration.Record
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -206,7 +205,7 @@ func TestImporter_InitAndGetters(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "proto", nil)
+	imp, err := NewImporter(context.Background(), conn, &integration.Options{}, "proto", nil)
 	require.NoError(t, err)
 	require.Equal(t, "o", imp.Origin())
 	require.Equal(t, "t", imp.Type())
@@ -224,7 +223,7 @@ func TestImporter_Init_UnwrapsErrors(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	_, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	_, err := NewImporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.ErrorContains(t, err, "I/O error", "expected Unavailable to be wrapped as I/O error")
 }
 
@@ -235,14 +234,14 @@ func TestImporter_Init_CanceledMapsToContextCanceled(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	_, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	_, err := NewImporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/a.txt",
-		FileInfo: objects.FileInfo{
+		FileInfo: integration.FileInfo{
 			Lname: "a.txt",
 			Lsize: 5,
 			Lmode: 0o644,
@@ -259,16 +258,16 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	records := make(chan *connectors.Record, 4)
-	results := make(chan *connectors.Result, 4)
+	records := make(chan *integration.Record, 4)
+	results := make(chan *integration.Result, 4)
 
 	importDone := make(chan error, 1)
 	go func() { importDone <- imp.Import(context.Background(), records, results) }()
 
-	var got *connectors.Record
+	var got *integration.Record
 	select {
 	case got = <-records:
 	case <-time.After(2 * time.Second):
@@ -284,7 +283,7 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	_ = got.Reader.Close()
 
 	// ACK
-	results <- &connectors.Result{Record: *got}
+	results <- &integration.Result{Record: *got}
 	close(results)
 
 	require.NoError(t, <-importDone)
@@ -308,11 +307,11 @@ func TestImporter_OpenErrorPropagates(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	gi := imp.(*Importer)
-	rd, err := gi.open(context.Background(), &connectors.Record{Pathname: "/missing"})
+	rd, err := gi.open(context.Background(), &integration.Record{Pathname: "/missing"})
 	require.NoError(t, err, "open returned err immediately")
 	defer rd.Close()
 	_, err = io.ReadAll(rd)
@@ -327,7 +326,7 @@ func TestImporter_EarlyImportErrorAfterFinishedIsReported(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	earlyImportErr, seen := runImport(t, imp.(*Importer))
@@ -337,9 +336,9 @@ func TestImporter_EarlyImportErrorAfterFinishedIsReported(t *testing.T) {
 }
 
 func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/a.txt",
-		FileInfo: objects.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
+		FileInfo: integration.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
 	}
 
 	srv := &fakeImporter{
@@ -350,7 +349,7 @@ func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	earlyImportErr, seen := runImport(t, imp.(*Importer))
@@ -361,9 +360,9 @@ func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
 }
 
 func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/a.txt",
-		FileInfo: objects.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
+		FileInfo: integration.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
 	}
 
 	srv := &fakeImporter{
@@ -374,7 +373,7 @@ func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	ImportErr, seen := runImport(t, imp.(*Importer))
@@ -392,7 +391,7 @@ func TestImporter_EarlyImportCanceledIsUnwrapped(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	earlyImportErr, _ := runImport(t, imp.(*Importer))
@@ -401,9 +400,9 @@ func TestImporter_EarlyImportCanceledIsUnwrapped(t *testing.T) {
 }
 
 func TestImporter_EarlyImportSucceedsAfterFinished(t *testing.T) {
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/a.txt",
-		FileInfo: objects.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
+		FileInfo: integration.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
 	}
 
 	srv := &fakeImporter{
@@ -413,7 +412,7 @@ func TestImporter_EarlyImportSucceedsAfterFinished(t *testing.T) {
 	conn, cleanup := dialImporter(t, srv)
 	defer cleanup()
 
-	imp, err := NewImporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	earlyImportErr, seen := runImport(t, imp.(*Importer))

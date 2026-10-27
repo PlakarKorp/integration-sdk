@@ -8,11 +8,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/location"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/connectors/exporter"
-	"github.com/PlakarKorp/kloset/location"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
@@ -66,7 +65,7 @@ func ignoreEOF(err error) error {
 	return err
 }
 
-func drain(records <-chan *connectors.Record) {
+func drain(records <-chan *integration.Record) {
 	for record := range records {
 		if record.Reader != nil {
 			record.Reader.Close()
@@ -74,7 +73,7 @@ func drain(records <-chan *connectors.Record) {
 	}
 }
 
-func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *connectors.Options, p string, config map[string]string) (exporter.Exporter, error) {
+func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *integration.Options, p string, config map[string]string) (integration.Exporter, error) {
 	maxConcurrency := opts.MaxConcurrency
 	if maxConcurrency < 1 {
 		maxConcurrency = 1
@@ -126,7 +125,7 @@ func (g *Exporter) Close(ctx context.Context) error {
 	return unwrap(err)
 }
 
-func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *connectors.Record) error {
+func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *integration.Record) error {
 	defer drain(records)
 	defer stream.CloseSend()
 
@@ -193,7 +192,7 @@ func (g *Exporter) transmitRecords(stream grpc.BidiStreamingClient[proto.ExportR
 // transmitEntries sends the records in order over the Export stream,
 // uploading the payloads that don't fit inline over maxConcurrency
 // PutData streams.
-func (g *Exporter) transmitEntries(ctx context.Context, stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *connectors.Record) error {
+func (g *Exporter) transmitEntries(ctx context.Context, stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *integration.Record) error {
 	defer drain(records)
 
 	// whoever fails first cancels the rest and is the one
@@ -235,7 +234,7 @@ func (g *Exporter) transmitEntries(ctx context.Context, stream grpc.BidiStreamin
 	return context.Cause(ctx)
 }
 
-func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *connectors.Record, jobs chan<- payloadJob) error {
+func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], records <-chan *integration.Record, jobs chan<- payloadJob) error {
 	send := func(entry *proto.ExportEntry) error {
 		return unwrap(ignoreEOF(stream.Send(&proto.ExportRequest{
 			Packet: &proto.ExportRequest_Entry{Entry: entry},
@@ -286,7 +285,7 @@ func (g *Exporter) sendEntries(ctx context.Context, stream grpc.BidiStreamingCli
 // whole payload; err is a read failure.
 //
 // We have to try to read because for xattrs the size is not exposed.
-func probe(record *connectors.Record) (buf []byte, inline bool, err error) {
+func probe(record *integration.Record) (buf []byte, inline bool, err error) {
 	if record.FileInfo.Lsize > inlineThreshold {
 		// no point in reading: we know it won't fit.
 		return nil, false, nil
@@ -381,7 +380,7 @@ func (g *Exporter) putData(ctx context.Context, job payloadJob) error {
 	return finish(nil)
 }
 
-func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], results chan<- *connectors.Result) error {
+func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRequest, proto.ExportResponse], results chan<- *integration.Result) error {
 	defer close(results)
 
 	for {
@@ -406,7 +405,7 @@ func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRe
 	}
 }
 
-func (g *Exporter) Export(ctx context.Context, records <-chan *connectors.Record, results chan<- *connectors.Result) error {
+func (g *Exporter) Export(ctx context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	stream, err := g.client.Export(ctx)
 	if err != nil {
 		return unwrap(err)
