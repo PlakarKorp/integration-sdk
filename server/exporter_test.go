@@ -747,59 +747,6 @@ func TestExporterServerReleasesPayloadsOnClose(t *testing.T) {
 	}
 }
 
-// a shutdown has to release an exporter parked on a payload, so that
-// it gets to wind down instead of staying blocked.
-func TestRunExporterOnReleasesPayloadsOnShutdown(t *testing.T) {
-	exp := &fakeExporter{
-		reading: make(chan struct{}, 1),
-		seen:    make(chan gotRecord, 1),
-	}
-
-	lis := bufconn.Listen(1 << 20)
-	ctx, cancel := context.WithCancel(t.Context())
-
-	served := make(chan error, 1)
-	go func() {
-		served <- RunExporterOn(ctx, func(context.Context, *connectors.Options, string, map[string]string) (exporter.Exporter, error) {
-			return exp, nil
-		}, lis)
-	}()
-
-	client := dialOn(t, lis)
-
-	stream, err := client.Export(t.Context())
-	require.NoError(t, err)
-
-	entry := entryOf("/f", 1<<20)
-	entry.Id = 1
-	err = stream.Send(&proto.ExportRequest{
-		Packet: &proto.ExportRequest_Entry{Entry: entry},
-	})
-	require.NoError(t, err, "send entry")
-
-	select {
-	case <-exp.reading:
-	case <-time.After(5 * time.Second):
-		require.Fail(t, "timeout waiting for the exporter to get the record")
-	}
-
-	cancel()
-
-	select {
-	case got := <-exp.seen:
-		require.Error(t, got.err, "the payload read succeeded, want the shutdown error")
-	case <-time.After(5 * time.Second):
-		require.Fail(t, "the exporter is still blocked on a payload nobody will send")
-	}
-
-	select {
-	case err := <-served:
-		require.NoError(t, err)
-	case <-time.After(5 * time.Second):
-		require.Fail(t, "RunExporterOn did not return")
-	}
-}
-
 // the handshake is what puts a client on the entry protocol.
 func TestExporterServerAnnouncesPutData(t *testing.T) {
 	plugin := &exporterPluginServer{

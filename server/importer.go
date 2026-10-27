@@ -214,21 +214,24 @@ func (plugin *importerPluginServer) Close(ctx context.Context, req *proto.CloseR
 }
 
 // RunImporter starts the gRPC server for the importer plugin.
-func RunImporter(ctx context.Context, constructor importer.ImporterFn) error {
+func RunImporter(constructor importer.ImporterFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
 	}
 	defer closer.Close()
 
-	return RunImporterOn(ctx, constructor, listener)
+	return RunImporterOn(constructor, listener)
 }
 
-func RunImporterOn(ctx context.Context, constructor importer.ImporterFn, listener net.Listener) error {
+func RunImporterOn(constructor importer.ImporterFn, listener net.Listener) error {
 	server := grpc.NewServer()
 	proto.RegisterImporterServer(server, &importerPluginServer{
 		constructor: constructor,
 	})
 
-	return serve(ctx, server, listener)
+	if err := server.Serve(listener); err != nil {
+		return err
+	}
+	return nil
 }

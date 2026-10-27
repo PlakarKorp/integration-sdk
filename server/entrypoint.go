@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -19,10 +18,10 @@ func checkArgs(args []string) {
 	}
 }
 
-func EntrypointImporter(ctx context.Context, ctor importer.ImporterFn, args []string) {
+func EntrypointImporter(ctor importer.ImporterFn, args []string) {
 	checkArgs(args)
 
-	if err := RunImporter(ctx, ctor); err != nil {
+	if err := RunImporter(ctor); err != nil {
 		if !errors.Is(err, io.EOF) {
 			fmt.Fprintf(os.Stderr, "importer plugin process exited with unexpected error: %s\n", err)
 			os.Exit(1)
@@ -32,10 +31,10 @@ func EntrypointImporter(ctx context.Context, ctor importer.ImporterFn, args []st
 	os.Exit(0)
 }
 
-func EntrypointExporter(ctx context.Context, ctor exporter.ExporterFn, args []string) {
+func EntrypointExporter(ctor exporter.ExporterFn, args []string) {
 	checkArgs(args)
 
-	if err := RunExporter(ctx, ctor); err != nil {
+	if err := RunExporter(ctor); err != nil {
 		if !errors.Is(err, io.EOF) {
 			fmt.Fprintf(os.Stderr, "exporter plugin process exited with unexpected error: %s\n", err)
 			os.Exit(1)
@@ -45,10 +44,10 @@ func EntrypointExporter(ctx context.Context, ctor exporter.ExporterFn, args []st
 	os.Exit(0)
 }
 
-func EntrypointStorage(ctx context.Context, ctor storage.StoreFn, args []string) {
+func EntrypointStorage(ctor storage.StoreFn, args []string) {
 	checkArgs(args)
 
-	if err := RunStorage(ctx, ctor); err != nil {
+	if err := RunStorage(ctor); err != nil {
 		if !errors.Is(err, io.EOF) {
 			fmt.Fprintf(os.Stderr, "storage plugin process exited with unexpected error: %s\n", err)
 			os.Exit(1)
@@ -58,10 +57,10 @@ func EntrypointStorage(ctx context.Context, ctor storage.StoreFn, args []string)
 	os.Exit(0)
 }
 
-func EntrypointInventory(ctx context.Context, constructor InventoryFn, args []string) {
+func EntrypointInventory(constructor InventoryFn, args []string) {
 	checkArgs(args)
 
-	if err := RunInventory(ctx, constructor); err != nil && !errors.Is(err, io.EOF) {
+	if err := RunInventory(constructor); err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "Inventory plugin failed unexpectedly: %s\n", err)
 		os.Exit(1)
 	}
@@ -69,10 +68,10 @@ func EntrypointInventory(ctx context.Context, constructor InventoryFn, args []st
 	os.Exit(0)
 }
 
-func EntrypointSecretProvider(ctx context.Context, constructor SecretProviderFn, args []string) {
+func EntrypointSecretProvider(constructor SecretProviderFn, args []string) {
 	checkArgs(args)
 
-	if err := RunSecretProvider(ctx, constructor); err != nil && !errors.Is(err, io.EOF) {
+	if err := RunSecretProvider(constructor); err != nil && !errors.Is(err, io.EOF) {
 		fmt.Fprintf(os.Stderr, "provider plugin failed unexpectedly: %s\n", err)
 		os.Exit(1)
 	}

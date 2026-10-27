@@ -412,26 +412,24 @@ func (plugin *exporterPluginServer) Close(ctx context.Context, req *proto.CloseR
 // RunExporter launches the gRPC server for an exporter plugin.
 //
 // The given constructor will be used to initialize the exporter instance.
-func RunExporter(ctx context.Context, constructor exporter.ExporterFn) error {
+func RunExporter(constructor exporter.ExporterFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
 	}
 	defer closer.Close()
 
-	return RunExporterOn(ctx, constructor, listener)
+	return RunExporterOn(constructor, listener)
 }
 
-func RunExporterOn(ctx context.Context, constructor exporter.ExporterFn, listener net.Listener) error {
+func RunExporterOn(constructor exporter.ExporterFn, listener net.Listener) error {
 	server := grpc.NewServer()
 
 	plugin := &exporterPluginServer{constructor: constructor}
 	proto.RegisterExporterServer(server, plugin)
 
-	return serve(ctx, server, listener, func() {
-		// an exporter parked on a payload that is never going to
-		// arrive now would never get to wind down: Stop() does not
-		// wait for the handlers.
-		plugin.inflight.fail(fmt.Errorf("the plugin is shutting down: %w", ctx.Err()))
-	})
+	if err := server.Serve(listener); err != nil {
+		return err
+	}
+	return nil
 }

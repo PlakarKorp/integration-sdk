@@ -66,21 +66,21 @@ func (g *secretServer) Close(ctx context.Context, req *secret.CloseRequest) (*se
 	return &secret.CloseResponse{}, nil
 }
 
-func RunSecretProvider(ctx context.Context, constructor SecretProviderFn) error {
+func RunSecretProvider(constructor SecretProviderFn) error {
 	listener, closer, err := initListener()
 	if err != nil {
 		return fmt.Errorf("failed to initialize connection: %w", err)
 	}
 	defer closer.Close()
 
-	return RunSecretProviderOn(ctx, constructor, listener)
+	return RunSecretProviderOn(constructor, listener)
 }
 
-func RunSecretProviderOn(ctx context.Context, constructor SecretProviderFn, listener net.Listener) error {
+func RunSecretProviderOn(constructor SecretProviderFn, listener net.Listener) error {
 	server := grpc.NewServer()
 	secret.RegisterSecretProviderServer(server, &secretServer{
 		constructor: constructor,
 	})
 
-	return serve(ctx, server, listener)
+	return server.Serve(listener)
 }
