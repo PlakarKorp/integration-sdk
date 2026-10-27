@@ -105,9 +105,12 @@ func (plugin *storagePluginServer) List(ctx context.Context, req *proto.ListRequ
 	if err != nil {
 		return nil, err
 	}
+	var (
+		res  = integration.StorageResource(req.Type)
+		flag = integration.StorageFlag(req.Flags)
+	)
 
-	ctx = integration.WithFlag(ctx, integration.StorageFlag(req.Flags))
-	macs, err := store.List(ctx, integration.StorageResource(req.Type))
+	macs, err := store.List(ctx, res, flag)
 	if err != nil {
 		return nil, err
 	}
@@ -133,12 +136,12 @@ func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[proto.P
 	}
 
 	var (
-		res = integration.StorageResource(req.Type)
-		mac = integration.MAC(req.Mac)
-		ctx = integration.WithFlag(stream.Context(), integration.StorageFlag(req.Flags))
+		res  = integration.StorageResource(req.Type)
+		mac  = integration.MAC(req.Mac)
+		flag = integration.StorageFlag(req.Flags)
 	)
 
-	size, err := store.Put(ctx, res, mac, client.ReceiveChunks(func() ([]byte, error) {
+	size, err := store.Put(stream.Context(), res, flag, mac, client.ReceiveChunks(func() ([]byte, error) {
 		req, err := stream.Recv()
 		if err != nil {
 			return nil, err
@@ -159,9 +162,9 @@ func (plugin *storagePluginServer) Get(req *proto.GetRequest, stream grpc.Server
 	}
 
 	var (
-		res = integration.StorageResource(req.Type)
-		mac = integration.MAC(req.Mac)
-		ctx = integration.WithFlag(stream.Context(), integration.StorageFlag(req.Flags))
+		res  = integration.StorageResource(req.Type)
+		flag = integration.StorageFlag(req.Flags)
+		mac  = integration.MAC(req.Mac)
 
 		rg *integration.Range
 	)
@@ -173,7 +176,7 @@ func (plugin *storagePluginServer) Get(req *proto.GetRequest, stream grpc.Server
 		}
 	}
 
-	r, err := store.Get(ctx, res, mac, rg)
+	r, err := store.Get(stream.Context(), res, flag, mac, rg)
 	if err != nil {
 		return err
 	}
@@ -193,8 +196,13 @@ func (plugin *storagePluginServer) Delete(ctx context.Context, req *proto.Delete
 		return nil, err
 	}
 
-	ctx = integration.WithFlag(ctx, integration.StorageFlag(req.Flags))
-	if err := store.Delete(ctx, integration.StorageResource(req.Type), integration.MAC(req.Mac)); err != nil {
+	var (
+		res  = integration.StorageResource(req.Type)
+		flag = integration.StorageFlag(req.Flags)
+		mac  = integration.MAC(req.Mac)
+	)
+
+	if err := store.Delete(ctx, res, flag, mac); err != nil {
 		return nil, err
 	}
 

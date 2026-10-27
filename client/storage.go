@@ -190,10 +190,10 @@ func ReceiveChunks(chunkReceiverFn func() ([]byte, error)) io.ReadCloser {
 	return streamReader
 }
 
-func (s *Store) List(ctx context.Context, res integration.StorageResource) ([]integration.MAC, error) {
+func (s *Store) List(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag) ([]integration.MAC, error) {
 	resp, err := s.client.List(ctx, &proto.ListRequest{
 		Type:  proto.StorageResource(res),
-		Flags: proto.StorageFlags(integration.Flag(ctx)),
+		Flags: proto.StorageFlags(flag),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list %s: %w", res, unwrap(err))
@@ -209,7 +209,7 @@ func (s *Store) List(ctx context.Context, res integration.StorageResource) ([]in
 	return macs, nil
 }
 
-func (s *Store) Put(ctx context.Context, res integration.StorageResource, mac integration.MAC, rd io.Reader) (int64, error) {
+func (s *Store) Put(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag, mac integration.MAC, rd io.Reader) (int64, error) {
 	// closing the stream would commit a truncated object: cancel it
 	// instead if we fail half way.
 	ctx, cancel := context.WithCancel(ctx)
@@ -223,7 +223,7 @@ func (s *Store) Put(ctx context.Context, res integration.StorageResource, mac in
 	err = stream.Send(&proto.PutRequest{
 		Mac:   mac[:],
 		Type:  proto.StorageResource(res),
-		Flags: proto.StorageFlags(integration.Flag(ctx)),
+		Flags: proto.StorageFlags(flag),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("failed to send mac: %w", unwrap(err))
@@ -252,7 +252,7 @@ func (s *Store) Put(ctx context.Context, res integration.StorageResource, mac in
 	return resp.BytesWritten, nil
 }
 
-func (s *Store) Get(ctx context.Context, res integration.StorageResource, mac integration.MAC, rg *integration.Range) (io.ReadCloser, error) {
+func (s *Store) Get(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag, mac integration.MAC, rg *integration.Range) (io.ReadCloser, error) {
 	var grg *proto.GetRequest_Range
 	if rg != nil {
 		grg = &proto.GetRequest_Range{
@@ -265,7 +265,7 @@ func (s *Store) Get(ctx context.Context, res integration.StorageResource, mac in
 		Mac:   mac[:],
 		Type:  proto.StorageResource(res),
 		Range: grg,
-		Flags: proto.StorageFlags(integration.Flag(ctx)),
+		Flags: proto.StorageFlags(flag),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get %s: %w", res, unwrap(err))
@@ -280,11 +280,11 @@ func (s *Store) Get(ctx context.Context, res integration.StorageResource, mac in
 	}), nil
 }
 
-func (s *Store) Delete(ctx context.Context, res integration.StorageResource, mac integration.MAC) error {
+func (s *Store) Delete(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag, mac integration.MAC) error {
 	_, err := s.client.Delete(ctx, &proto.DeleteRequest{
 		Mac:   mac[:],
 		Type:  proto.StorageResource(res),
-		Flags: proto.StorageFlags(integration.Flag(ctx)),
+		Flags: proto.StorageFlags(flag),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to delete %s: %w", res, unwrap(err))

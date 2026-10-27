@@ -44,24 +44,11 @@ func (s StorageResource) String() string {
 	}
 }
 
-// Pass a flag to the storage, (ab)using the context. When we go for a new
-// version of the protocol roll this out as a parameter.
-type flagCtxKey struct{}
-
 type StorageFlag uint32
 
 const (
 	StorageHot StorageFlag = 1 << iota
 )
-
-func WithFlag(ctx context.Context, flag StorageFlag) context.Context {
-	return context.WithValue(ctx, flagCtxKey{}, flag)
-}
-
-func Flag(ctx context.Context) StorageFlag {
-	fl, _ := ctx.Value(flagCtxKey{}).(StorageFlag)
-	return fl
-}
 
 type Range struct {
 	Offset uint64
@@ -80,10 +67,10 @@ type Store interface {
 
 	Mode(context.Context) (Mode, error)
 	Size(context.Context) (int64, error) // this can be costly, call with caution
-	List(context.Context, StorageResource) ([]MAC, error)
-	Put(context.Context, StorageResource, MAC, io.Reader) (int64, error)
-	Get(context.Context, StorageResource, MAC, *Range) (io.ReadCloser, error)
-	Delete(context.Context, StorageResource, MAC) error
+	List(context.Context, StorageResource, StorageFlag) ([]MAC, error)
+	Put(context.Context, StorageResource, StorageFlag, MAC, io.Reader) (int64, error)
+	Get(context.Context, StorageResource, StorageFlag, MAC, *Range) (io.ReadCloser, error)
+	Delete(context.Context, StorageResource, StorageFlag, MAC) error
 
 	Close(ctx context.Context) error
 }
