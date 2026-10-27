@@ -22,11 +22,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 
 	"github.com/PlakarKorp/integration-sdk"
 	"github.com/PlakarKorp/integration-sdk/location"
 	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type Store struct {
@@ -190,13 +193,11 @@ func ReceiveChunks(chunkReceiverFn func() ([]byte, error)) io.ReadCloser {
 	return streamReader
 }
 
-func (s *Store) List(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag) ([]integration.MAC, error) {
-	resp, err := s.client.List(ctx, &proto.ListRequest{
-		Type:  proto.StorageResource(res),
-		Flags: proto.StorageFlags(flag),
-	})
+// this is the legacy way of listing
+func (s *Store) legacylist(ctx context.Context, req *proto.ListRequest) ([]integration.MAC, error) {
+	resp, err := s.client.List(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list %s: %w", res, unwrap(err))
+		return nil, fmt.Errorf("failed to list %s: %w", req.Type, unwrap(err))
 	}
 
 	var macs []integration.MAC
@@ -207,6 +208,76 @@ func (s *Store) List(ctx context.Context, res integration.StorageResource, flag 
 		macs = append(macs, integration.MAC(mac))
 	}
 	return macs, nil
+}
+
+func (s *Store) List(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag) iter.Seq2[integration.Resource, error] {
+	return func(yield func(integration.Resource, error) bool) {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel() // tear down the stream on early exit
+
+		req := &proto.ListRequest{
+			Type:  proto.StorageResource(res),
+			Flags: proto.StorageFlags(flag),
+		}
+
+		// if ListStream is unsupported, we'll get the error
+		// on the first Recv() on the stream, not on the RPC
+		// itself.  go figure...
+		resp, err := s.client.ListStream(ctx, req)
+		if err != nil {
+			yield(integration.Resource{}, err)
+			return
+		}
+
+		first := true
+		for {
+			lres, err := resp.Recv()
+			if err == io.EOF {
+				return
+			}
+			if first && status.Code(err) == codes.Unimplemented {
+				macs, err := s.legacylist(ctx, req)
+				if err != nil {
+					yield(integration.Resource{}, err)
+					return
+				}
+				for _, mac := range macs {
+					// we only have macs in the legacy list
+					if !yield(integration.Resource{MAC: mac}, nil) {
+						return
+					}
+				}
+				return
+			}
+			if err != nil {
+				yield(integration.Resource{}, err)
+				return
+			}
+
+			first = false
+
+			for _, res := range lres.Resources {
+				if res == nil {
+					yield(integration.Resource{}, fmt.Errorf("got nil resource"))
+					return
+				}
+
+				if len(res.Mac) != len(integration.MAC{}) {
+					yield(integration.Resource{}, fmt.Errorf("invalid MAC length: %d", len(res.Mac)))
+					return
+				}
+
+				r := integration.Resource{
+					MAC:   integration.MAC(res.Mac),
+					Size:  res.Size,
+					MTime: res.Mtime.AsTime(),
+				}
+				if !yield(r, nil) {
+					return
+				}
+			}
+		}
+	}
 }
 
 func (s *Store) Put(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag, mac integration.MAC, rd io.Reader) (int64, error) {

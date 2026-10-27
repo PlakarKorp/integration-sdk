@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package store;
 
+import "google/protobuf/timestamp.proto";
+
 enum StorageResource {
   STORAGE_RESOURCE_UNDEFINED = 0;
   STORAGE_RESOURCE_PACKFILE = 1;
@@ -25,7 +27,8 @@ service Store {
 
   rpc Mode(ModeRequest) returns (ModeResponse);
   rpc Size(SizeRequest) returns (SizeResponse);
-  rpc List(ListRequest) returns (ListResponse);
+  rpc List(ListRequest) returns (ListResponse); // deprecated
+  rpc ListStream(ListRequest) returns (stream ListStreamResponse);
   rpc Put(stream PutRequest) returns (PutResponse);
   rpc Get(GetRequest) returns (stream GetResponse);
   rpc Delete(DeleteRequest) returns (DeleteResponse);
@@ -78,6 +81,14 @@ message ListRequest {
 }
 message ListResponse {
   repeated bytes macs = 1;
+}
+message Resource {
+  bytes mac = 1;
+  int64 size = 2;
+  google.protobuf.Timestamp mtime = 3;
+};
+message ListStreamResponse {
+  repeated Resource resources = 1;
 }
 
 message PutRequest {

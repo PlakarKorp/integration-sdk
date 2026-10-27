@@ -3,6 +3,8 @@ package integration
 import (
 	"context"
 	"io"
+	"iter"
+	"time"
 
 	"github.com/PlakarKorp/integration-sdk/location"
 )
@@ -55,6 +57,12 @@ type Range struct {
 	Length uint32
 }
 
+type Resource struct {
+	MAC   MAC
+	Size  int64     // -1 if unknown
+	MTime time.Time // zero if not known
+}
+
 type Store interface {
 	Create(context.Context, []byte) error
 	Open(context.Context) ([]byte, error)
@@ -66,8 +74,8 @@ type Store interface {
 	Flags() location.Flags
 
 	Mode(context.Context) (Mode, error)
-	Size(context.Context) (int64, error) // this can be costly, call with caution
-	List(context.Context, StorageResource, StorageFlag) ([]MAC, error)
+	Size(context.Context) (int64, error) // this can be costly, call with caution // XXX remove?
+	List(context.Context, StorageResource, StorageFlag) iter.Seq2[Resource, error]
 	Put(context.Context, StorageResource, StorageFlag, MAC, io.Reader) (int64, error)
 	Get(context.Context, StorageResource, StorageFlag, MAC, *Range) (io.ReadCloser, error)
 	Delete(context.Context, StorageResource, StorageFlag, MAC) error

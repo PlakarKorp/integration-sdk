@@ -9,6 +9,7 @@ import (
 	"github.com/PlakarKorp/integration-sdk/client"
 	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type storagePluginServer struct {
@@ -108,19 +109,59 @@ func (plugin *storagePluginServer) List(ctx context.Context, req *proto.ListRequ
 	var (
 		res  = integration.StorageResource(req.Type)
 		flag = integration.StorageFlag(req.Flags)
+		ret  [][]byte
 	)
 
-	macs, err := store.List(ctx, res, flag)
+	for res, err := range store.List(ctx, res, flag) {
+		if err != nil {
+			return nil, err
+		}
+
+		ret = append(ret, res.MAC[:])
+	}
+
+	return &proto.ListResponse{Macs: ret}, nil
+}
+
+func (plugin *storagePluginServer) ListStream(req *proto.ListRequest, stream grpc.ServerStreamingServer[proto.ListStreamResponse]) error {
+	store, err := plugin.instance.get()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	gmacs := make([][]byte, 0, len(macs))
-	for i := range macs {
-		gmacs = append(gmacs, macs[i][:])
+	var (
+		res  = integration.StorageResource(req.Type)
+		flag = integration.StorageFlag(req.Flags)
+	)
+
+	const batch = 1024
+	buf := make([]*proto.Resource, 0, batch)
+
+	for res, err := range store.List(stream.Context(), res, flag) {
+		if err != nil {
+			return err
+		}
+
+		buf = append(buf, &proto.Resource{
+			Mac:   res.MAC[:],
+			Size:  res.Size,
+			Mtime: timestamppb.New(res.MTime),
+		})
+		if len(buf) < batch {
+			continue
+		}
+
+		// flush
+		if err := stream.Send(&proto.ListStreamResponse{Resources: buf}); err != nil {
+			return err
+		}
+		buf = make([]*proto.Resource, 0, batch)
 	}
 
-	return &proto.ListResponse{Macs: gmacs}, nil
+	if len(buf) != 0 {
+		return stream.Send(&proto.ListStreamResponse{Resources: buf})
+	}
+	return nil
 }
 
 func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[proto.PutRequest, proto.PutResponse]) error {

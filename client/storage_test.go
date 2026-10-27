@@ -174,8 +174,11 @@ func TestStore_List_ValidatesMacLength(t *testing.T) {
 	defer cleanup()
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
-	_, err := s.List(context.Background(), integration.StorageResourcePackfile, 0)
-	require.Error(t, err, "expected validation error for short MAC")
+	var itererr error
+	for _, err := range s.List(context.Background(), integration.StorageResourcePackfile, 0) {
+		itererr = err
+	}
+	require.Error(t, itererr, "expected validation error for short MAC")
 }
 
 func TestStore_List_RoundTripsMacs(t *testing.T) {
@@ -185,9 +188,13 @@ func TestStore_List_RoundTripsMacs(t *testing.T) {
 	defer cleanup()
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
-	got, err := s.List(context.Background(), integration.StorageResourcePackfile, 0)
-	require.NoError(t, err)
-	require.Equal(t, []integration.MAC{integration.MAC(full)}, got)
+	var count int
+	for got, err := range s.List(context.Background(), integration.StorageResourcePackfile, 0) {
+		count++
+		require.NoError(t, err)
+		require.Equal(t, integration.Resource{MAC: integration.MAC(full)}, got)
+	}
+	require.Equal(t, 1, count)
 }
 
 func TestStore_PutStreamsChunks(t *testing.T) {
