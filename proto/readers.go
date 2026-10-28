@@ -4,8 +4,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/objects"
+	"github.com/PlakarKorp/integration-sdk"
 )
 
 type HoldingReaders struct {
@@ -19,15 +18,15 @@ func NewHoldingReaders() *HoldingReaders {
 	}
 }
 
-func recordToPath(record *connectors.Record) string {
+func recordToPath(record *integration.Record) string {
 	pathname := record.Pathname
 
 	if record.IsXattr {
 		sep := ":"
-		if record.XattrType == objects.AttributeADS {
+		if record.XattrType == integration.AttributeADS {
 			sep = "@"
 		}
-		if record.XattrType == objects.AttributeCustom {
+		if record.XattrType == integration.AttributeCustom {
 			sep = "%"
 		}
 		pathname = "xattr:" + pathname + sep + record.XattrName
@@ -36,14 +35,14 @@ func recordToPath(record *connectors.Record) string {
 	return pathname
 }
 
-func (h *HoldingReaders) Track(record *connectors.Record) {
+func (h *HoldingReaders) Track(record *integration.Record) {
 	pathname := recordToPath(record)
 	h.mu.Lock()
 	h.readers[pathname] = record.Reader
 	h.mu.Unlock()
 }
 
-func (h *HoldingReaders) Get(record *connectors.Record) io.ReadCloser {
+func (h *HoldingReaders) Get(record *integration.Record) io.ReadCloser {
 	pathname := recordToPath(record)
 
 	h.mu.Lock()

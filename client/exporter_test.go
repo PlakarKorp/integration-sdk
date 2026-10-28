@@ -14,11 +14,9 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
+	"github.com/PlakarKorp/integration-sdk"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/objects"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,7 +33,7 @@ type fakeExporter struct {
 	mu       sync.Mutex
 	received []receivedFile
 
-	respond []*connectors.Result
+	respond []*integration.Result
 
 	// earlyExportErr, when set, makes the Export handler abort after its first
 	// Recv() and return this error, which grpc turns into a non-OK status
@@ -221,7 +219,7 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 	var buf bytes.Buffer
 
 	// Pre-queue any responses to send after we see at least one record.
-	pending := append([]*connectors.Result(nil), f.respond...)
+	pending := append([]*integration.Result(nil), f.respond...)
 
 	flush := func() {
 		f.mu.Lock()
@@ -306,8 +304,8 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 func runExport(t *testing.T, exp *Exporter, n int) (err error, producerFinished bool) {
 	t.Helper()
 
-	records := make(chan *connectors.Record, 1)
-	results := make(chan *connectors.Result, 64)
+	records := make(chan *integration.Record, 1)
+	results := make(chan *integration.Result, 64)
 
 	producer := make(chan struct{})
 	go func() {
@@ -375,10 +373,10 @@ func dialExporter(t *testing.T, srv *fakeExporter) (*grpc.ClientConn, func()) {
 	}
 }
 
-func exportableRecord() *connectors.Record {
-	rec := &connectors.Record{
+func exportableRecord() *integration.Record {
+	rec := &integration.Record{
 		Pathname: "/f.txt",
-		FileInfo: objects.FileInfo{Lname: "f.txt", Lsize: 4, Lmode: 0o644},
+		FileInfo: integration.FileInfo{Lname: "f.txt", Lsize: 4, Lmode: 0o644},
 	}
 	rec.Reader = io.NopCloser(bytes.NewReader([]byte("data")))
 	return rec
@@ -389,7 +387,7 @@ func dialFailing(t *testing.T, srv *fakeExporter) *Exporter {
 	conn, cleanup := dialExporter(t, srv)
 	t.Cleanup(cleanup)
 
-	exp, err := NewExporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	exp, err := NewExporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 	return exp.(*Exporter)
 }
@@ -402,7 +400,7 @@ func TestExporter_InitAndGetters(t *testing.T) {
 	conn, cleanup := dialExporter(t, &fakeExporter{})
 	defer cleanup()
 
-	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	exp, err := NewExporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 	require.Equal(t, "o", exp.Origin())
 	require.Equal(t, "t", exp.Type())
@@ -411,20 +409,20 @@ func TestExporter_InitAndGetters(t *testing.T) {
 
 func TestExporter_SendsRecordAndChunks(t *testing.T) {
 	srv := &fakeExporter{
-		respond: []*connectors.Result{
-			{Record: connectors.Record{Pathname: "/a.txt"}},
+		respond: []*integration.Result{
+			{Record: integration.Record{Pathname: "/a.txt"}},
 		},
 	}
 	conn, cleanup := dialExporter(t, srv)
 	defer cleanup()
 
-	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	exp, err := NewExporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
 	payload := bytes.Repeat([]byte("ab"), 100)
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/a.txt",
-		FileInfo: objects.FileInfo{
+		FileInfo: integration.FileInfo{
 			Lname: "a.txt",
 			Lsize: int64(len(payload)),
 			Lmode: 0o644,
@@ -432,8 +430,8 @@ func TestExporter_SendsRecordAndChunks(t *testing.T) {
 		Reader: io.NopCloser(bytes.NewReader(payload)),
 	}
 
-	records := make(chan *connectors.Record, 1)
-	results := make(chan *connectors.Result, 1)
+	records := make(chan *integration.Record, 1)
+	results := make(chan *integration.Result, 1)
 	records <- rec
 	close(records)
 
@@ -466,19 +464,19 @@ func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
 	conn, cleanup := dialExporter(t, srv)
 	defer cleanup()
 
-	exp, err := NewExporter(context.Background(), conn, &connectors.Options{}, "p", nil)
+	exp, err := NewExporter(context.Background(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	rec := &connectors.Record{
+	rec := &integration.Record{
 		Pathname: "/d",
-		FileInfo: objects.FileInfo{
+		FileInfo: integration.FileInfo{
 			Lname: "d",
 			Lmode: 0o755 | 0x80000000, // dir bit
 		},
 	}
 
-	records := make(chan *connectors.Record, 1)
-	results := make(chan *connectors.Result, 1)
+	records := make(chan *integration.Record, 1)
+	results := make(chan *integration.Result, 1)
 	records <- rec
 	close(records)
 
@@ -567,14 +565,14 @@ func TestExporter_TransmitRecordsCollapsesEOF(t *testing.T) {
 	conn, cleanup := dialExporter(t, srv)
 	defer cleanup()
 
-	exp, err := NewExporter(t.Context(), conn, &connectors.Options{}, "p", nil)
+	exp, err := NewExporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 	g := exp.(*Exporter)
 
 	stream, err := g.client.Export(t.Context())
 	require.NoError(t, err)
 
-	records := make(chan *connectors.Record, 1)
+	records := make(chan *integration.Record, 1)
 	producer := make(chan struct{})
 	go func() {
 		defer close(producer)
@@ -613,7 +611,7 @@ func dialEntryServer(t *testing.T, srv *fakeExporter, maxConcurrency int) *Expor
 	conn, cleanup := dialExporter(t, srv)
 	t.Cleanup(cleanup)
 
-	opts := &connectors.Options{MaxConcurrency: maxConcurrency}
+	opts := &integration.Options{MaxConcurrency: maxConcurrency}
 	exp, err := NewExporter(t.Context(), conn, opts, "p", nil)
 	require.NoError(t, err)
 	require.True(t, exp.(*Exporter).hasPutData, "client did not pick up has_put_data")
@@ -622,14 +620,14 @@ func dialEntryServer(t *testing.T, srv *fakeExporter, maxConcurrency int) *Expor
 
 // recordOf builds a record whose reader serves payload, optionally
 // failing with readErr once payload is exhausted.
-func recordOf(name string, payload []byte, readErr error) *connectors.Record {
+func recordOf(name string, payload []byte, readErr error) *integration.Record {
 	var rd io.Reader = bytes.NewReader(payload)
 	if readErr != nil {
 		rd = io.MultiReader(rd, errReader{readErr})
 	}
-	return &connectors.Record{
+	return &integration.Record{
 		Pathname: "/" + name,
-		FileInfo: objects.FileInfo{Lname: name, Lsize: int64(len(payload)), Lmode: 0o644},
+		FileInfo: integration.FileInfo{Lname: name, Lsize: int64(len(payload)), Lmode: 0o644},
 		Reader:   io.NopCloser(rd),
 	}
 }
@@ -639,16 +637,16 @@ type errReader struct{ err error }
 func (e errReader) Read([]byte) (int, error) { return 0, e.err }
 
 // exportRecords runs a whole Export over recs and returns its error.
-func exportRecords(t *testing.T, exp *Exporter, recs ...*connectors.Record) error {
+func exportRecords(t *testing.T, exp *Exporter, recs ...*integration.Record) error {
 	t.Helper()
 
-	records := make(chan *connectors.Record, len(recs))
+	records := make(chan *integration.Record, len(recs))
 	for _, rec := range recs {
 		records <- rec
 	}
 	close(records)
 
-	results := make(chan *connectors.Result, len(recs)+1)
+	results := make(chan *integration.Result, len(recs)+1)
 	done := make(chan error, 1)
 	go func() { done <- exp.Export(t.Context(), records, results) }()
 
@@ -700,9 +698,9 @@ func TestExporter_EntrySendsDirectoriesWithoutPayload(t *testing.T) {
 	srv := newEntryServer()
 	exp := dialEntryServer(t, srv, 4)
 
-	dir := &connectors.Record{
+	dir := &integration.Record{
 		Pathname: "/d",
-		FileInfo: objects.FileInfo{Lname: "d", Lmode: 0o755 | os.ModeDir},
+		FileInfo: integration.FileInfo{Lname: "d", Lmode: 0o755 | os.ModeDir},
 	}
 	require.NoError(t, exportRecords(t, exp, dir))
 
@@ -780,7 +778,7 @@ func TestExporter_EntryPayloadsUploadConcurrently(t *testing.T) {
 	exp := dialEntryServer(t, srv, concurrency)
 
 	big := bytes.Repeat([]byte("x"), inlineThreshold*3)
-	recs := make([]*connectors.Record, concurrency)
+	recs := make([]*integration.Record, concurrency)
 	for i := range recs {
 		recs[i] = recordOf("big", big, nil)
 	}
@@ -816,7 +814,7 @@ func TestExporter_PutDataFailureBeatsTheCancellation(t *testing.T) {
 	exp := dialEntryServer(t, srv, concurrency)
 
 	big := bytes.Repeat([]byte("x"), inlineThreshold*3)
-	recs := make([]*connectors.Record, concurrency)
+	recs := make([]*integration.Record, concurrency)
 	for i := range recs {
 		recs[i] = recordOf("big", big, nil)
 	}
@@ -861,11 +859,11 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 			conn, cleanup := dialExporter(t, tc.srv)
 			t.Cleanup(cleanup)
 
-			exp, err := NewExporter(t.Context(), conn, &connectors.Options{MaxConcurrency: 1}, "p", nil)
+			exp, err := NewExporter(t.Context(), conn, &integration.Options{MaxConcurrency: 1}, "p", nil)
 			require.NoError(t, err)
 
 			readers := make([]*trackingReader, count)
-			records := make(chan *connectors.Record)
+			records := make(chan *integration.Record)
 			go func() {
 				defer close(records)
 				for i := range readers {
@@ -876,7 +874,7 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 				}
 			}()
 
-			results := make(chan *connectors.Result, count+1)
+			results := make(chan *integration.Result, count+1)
 			done := make(chan error, 1)
 			go func() { done <- exp.Export(t.Context(), records, results) }()
 
@@ -913,13 +911,13 @@ func TestExporter_PayloadIdsAreUniqueAcrossExports(t *testing.T) {
 	errs := make(chan error, exports)
 	for range exports {
 		go func() {
-			records := make(chan *connectors.Record, perCall)
+			records := make(chan *integration.Record, perCall)
 			for range perCall {
 				records <- recordOf("f", big, nil)
 			}
 			close(records)
 
-			results := make(chan *connectors.Result, perCall+1)
+			results := make(chan *integration.Result, perCall+1)
 			done := make(chan error, 1)
 			go func() { done <- exp.Export(t.Context(), records, results) }()
 			for range results {

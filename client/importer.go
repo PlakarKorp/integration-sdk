@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/PlakarKorp/integration-sdk"
+	"github.com/PlakarKorp/integration-sdk/location"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/importer"
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/connectors/importer"
-	"github.com/PlakarKorp/kloset/location"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -48,7 +47,7 @@ func unwrap(err error) error {
 	}
 }
 
-func NewImporter(ctx context.Context, client grpc.ClientConnInterface, opts *connectors.Options, p string, config map[string]string) (importer.Importer, error) {
+func NewImporter(ctx context.Context, client grpc.ClientConnInterface, opts *integration.Options, p string, config map[string]string) (integration.Importer, error) {
 	importer := &Importer{
 		client: proto.NewImporterClient(client),
 	}
@@ -111,7 +110,7 @@ type streamReader struct {
 	buf    bytes.Buffer
 }
 
-func (g *Importer) open(parentctx context.Context, record *connectors.Record) (io.ReadCloser, error) {
+func (g *Importer) open(parentctx context.Context, record *integration.Record) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancelCause(parentctx)
 
 	stream, err := g.client.Open(ctx, &proto.OpenRequest{
@@ -181,7 +180,7 @@ func (s *streamReader) Close() error {
 	}
 }
 
-func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], records chan<- *connectors.Record) error {
+func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], records chan<- *integration.Record) error {
 	defer close(records)
 
 	for {
@@ -206,7 +205,7 @@ func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreaming
 			return err
 		}
 
-		record.Reader = connectors.NewLazyReader(func() (io.ReadCloser, error) {
+		record.Reader = integration.NewLazyReader(func() (io.ReadCloser, error) {
 			return g.open(ctx, record)
 		})
 
@@ -214,7 +213,7 @@ func (g *Importer) receiveRecords(ctx context.Context, stream grpc.BidiStreaming
 	}
 }
 
-func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], results <-chan *connectors.Result) error {
+func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportRequest, proto.ImportResponse], results <-chan *integration.Result) error {
 	for result := range results {
 		hdr := proto.ImportRequest{
 			Result: conn.ResultToProto(result),
@@ -236,7 +235,7 @@ func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportReque
 	return stream.CloseSend()
 }
 
-func (g *Importer) Import(ctx context.Context, records chan<- *connectors.Record, results <-chan *connectors.Result) error {
+func (g *Importer) Import(ctx context.Context, records chan<- *integration.Record, results <-chan *integration.Result) error {
 	stream, err := g.client.Import(ctx)
 	if err != nil {
 		return unwrap(err)

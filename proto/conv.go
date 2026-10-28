@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/PlakarKorp/kloset/connectors"
-	"github.com/PlakarKorp/kloset/objects"
+	"github.com/PlakarKorp/integration-sdk"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -14,7 +13,7 @@ var (
 	ErrInvalidRecord = errors.New("invalid record")
 )
 
-func RecordToProto(record *connectors.Record) *Record {
+func RecordToProto(record *integration.Record) *Record {
 	var errstr string
 	if record.Err != nil {
 		errstr = record.Err.Error()
@@ -58,7 +57,7 @@ func RecordToProto(record *connectors.Record) *Record {
 	}
 }
 
-func RecordFromProto(record *Record) (*connectors.Record, error) {
+func RecordFromProto(record *Record) (*integration.Record, error) {
 	if record == nil {
 		return nil, fmt.Errorf("%w: missing record", ErrInvalidRecord)
 	}
@@ -68,7 +67,7 @@ func RecordFromProto(record *Record) (*connectors.Record, error) {
 		err = fmt.Errorf("%s", record.Error)
 	}
 
-	var finfo objects.FileInfo
+	var finfo integration.FileInfo
 
 	if record.Error == "" && !record.IsXattr {
 		fi := record.FileInfo
@@ -78,7 +77,7 @@ func RecordFromProto(record *Record) (*connectors.Record, error) {
 				record.Pathname)
 		}
 
-		finfo = objects.FileInfo{
+		finfo = integration.FileInfo{
 			Lname:      fi.Name,
 			Lsize:      fi.Size,
 			Lmode:      fs.FileMode(fi.Mode),
@@ -94,12 +93,12 @@ func RecordFromProto(record *Record) (*connectors.Record, error) {
 		}
 	}
 
-	return &connectors.Record{
+	return &integration.Record{
 		Pathname:           record.Pathname,
 		Err:                err,
 		IsXattr:            record.IsXattr,
 		XattrName:          record.XattrName,
-		XattrType:          objects.Attribute(record.XattrType),
+		XattrType:          integration.Attribute(record.XattrType),
 		Target:             record.Target,
 		FileInfo:           finfo,
 		ExtendedAttributes: record.ExtendedAttributes,
@@ -107,7 +106,7 @@ func RecordFromProto(record *Record) (*connectors.Record, error) {
 	}, nil
 }
 
-func ResultToProto(result *connectors.Result) *Result {
+func ResultToProto(result *integration.Result) *Result {
 	var errstr string
 	if result.Err != nil {
 		errstr = result.Err.Error()
@@ -119,7 +118,7 @@ func ResultToProto(result *connectors.Result) *Result {
 	}
 }
 
-func ResultFromProto(result *Result) (*connectors.Result, error) {
+func ResultFromProto(result *Result) (*integration.Result, error) {
 	if result == nil {
 		return nil, fmt.Errorf("%w: missing result", ErrInvalidRecord)
 	}
@@ -134,7 +133,7 @@ func ResultFromProto(result *Result) (*connectors.Result, error) {
 		err = fmt.Errorf("%s", result.Error)
 	}
 
-	return &connectors.Result{
+	return &integration.Result{
 		Record: *record,
 		Err:    err,
 	}, nil
