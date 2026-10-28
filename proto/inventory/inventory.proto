@@ -5,9 +5,13 @@ option go_package = "github.com/PlakarKorp/integration-sdk/proto/inventory";
 package inventory;
 
 service Inventory {
+  // legacy object lifetime thing
   rpc Init(InitRequest) returns (InitResponse);
   rpc List(ListRequest) returns (stream ListResponse);
   rpc Close(CloseRequest) returns (CloseResponse);
+
+  // stateless
+  rpc StatelessList(StatelessListRequest) returns (stream ListResponse);
 }
 
 message InitRequest {
@@ -50,3 +54,7 @@ message ListResponse {
 message CloseRequest  {}
 
 message CloseResponse {}
+
+message StatelessListRequest {
+  map<string, string> config = 1;
+}
