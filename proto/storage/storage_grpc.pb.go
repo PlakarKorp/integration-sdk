@@ -19,17 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Store_Init_FullMethodName   = "/store.Store/Init"
-	Store_Create_FullMethodName = "/store.Store/Create"
-	Store_Open_FullMethodName   = "/store.Store/Open"
-	Store_Ping_FullMethodName   = "/store.Store/Ping"
-	Store_Mode_FullMethodName   = "/store.Store/Mode"
-	Store_Size_FullMethodName   = "/store.Store/Size"
-	Store_List_FullMethodName   = "/store.Store/List"
-	Store_Put_FullMethodName    = "/store.Store/Put"
-	Store_Get_FullMethodName    = "/store.Store/Get"
-	Store_Delete_FullMethodName = "/store.Store/Delete"
-	Store_Close_FullMethodName  = "/store.Store/Close"
+	Store_Init_FullMethodName       = "/store.Store/Init"
+	Store_Create_FullMethodName     = "/store.Store/Create"
+	Store_Open_FullMethodName       = "/store.Store/Open"
+	Store_Ping_FullMethodName       = "/store.Store/Ping"
+	Store_Mode_FullMethodName       = "/store.Store/Mode"
+	Store_Size_FullMethodName       = "/store.Store/Size"
+	Store_List_FullMethodName       = "/store.Store/List"
+	Store_ListStream_FullMethodName = "/store.Store/ListStream"
+	Store_Put_FullMethodName        = "/store.Store/Put"
+	Store_Get_FullMethodName        = "/store.Store/Get"
+	Store_Delete_FullMethodName     = "/store.Store/Delete"
+	Store_Close_FullMethodName      = "/store.Store/Close"
 )
 
 // StoreClient is the client API for Store service.
@@ -43,6 +44,7 @@ type StoreClient interface {
 	Mode(ctx context.Context, in *ModeRequest, opts ...grpc.CallOption) (*ModeResponse, error)
 	Size(ctx context.Context, in *SizeRequest, opts ...grpc.CallOption) (*SizeResponse, error)
 	List(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (*ListResponse, error)
+	ListStream(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListStreamResponse], error)
 	Put(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PutRequest, PutResponse], error)
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetResponse], error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
@@ -127,9 +129,28 @@ func (c *storeClient) List(ctx context.Context, in *ListRequest, opts ...grpc.Ca
 	return out, nil
 }
 
+func (c *storeClient) ListStream(ctx context.Context, in *ListRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListStreamResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Store_ServiceDesc.Streams[0], Store_ListStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ListRequest, ListStreamResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Store_ListStreamClient = grpc.ServerStreamingClient[ListStreamResponse]
+
 func (c *storeClient) Put(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PutRequest, PutResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Store_ServiceDesc.Streams[0], Store_Put_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Store_ServiceDesc.Streams[1], Store_Put_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +163,7 @@ type Store_PutClient = grpc.ClientStreamingClient[PutRequest, PutResponse]
 
 func (c *storeClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Store_ServiceDesc.Streams[1], Store_Get_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Store_ServiceDesc.Streams[2], Store_Get_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +211,7 @@ type StoreServer interface {
 	Mode(context.Context, *ModeRequest) (*ModeResponse, error)
 	Size(context.Context, *SizeRequest) (*SizeResponse, error)
 	List(context.Context, *ListRequest) (*ListResponse, error)
+	ListStream(*ListRequest, grpc.ServerStreamingServer[ListStreamResponse]) error
 	Put(grpc.ClientStreamingServer[PutRequest, PutResponse]) error
 	Get(*GetRequest, grpc.ServerStreamingServer[GetResponse]) error
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
@@ -224,6 +246,9 @@ func (UnimplementedStoreServer) Size(context.Context, *SizeRequest) (*SizeRespon
 }
 func (UnimplementedStoreServer) List(context.Context, *ListRequest) (*ListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedStoreServer) ListStream(*ListRequest, grpc.ServerStreamingServer[ListStreamResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ListStream not implemented")
 }
 func (UnimplementedStoreServer) Put(grpc.ClientStreamingServer[PutRequest, PutResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method Put not implemented")
@@ -384,6 +409,17 @@ func _Store_List_Handler(srv interface{}, ctx context.Context, dec func(interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Store_ListStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ListRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StoreServer).ListStream(m, &grpc.GenericServerStream[ListRequest, ListStreamResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Store_ListStreamServer = grpc.ServerStreamingServer[ListStreamResponse]
+
 func _Store_Put_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(StoreServer).Put(&grpc.GenericServerStream[PutRequest, PutResponse]{ServerStream: stream})
 }
@@ -483,6 +519,11 @@ var Store_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "ListStream",
+			Handler:       _Store_ListStream_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "Put",
 			Handler:       _Store_Put_Handler,

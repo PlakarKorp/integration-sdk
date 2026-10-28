@@ -3,6 +3,8 @@ package integration
 import (
 	"context"
 	"io"
+	"iter"
+	"time"
 
 	"github.com/PlakarKorp/integration-sdk/location"
 )
@@ -44,28 +46,21 @@ func (s StorageResource) String() string {
 	}
 }
 
-// Pass a flag to the storage, (ab)using the context. When we go for a new
-// version of the protocol roll this out as a parameter.
-type flagCtxKey struct{}
-
 type StorageFlag uint32
 
 const (
 	StorageHot StorageFlag = 1 << iota
 )
 
-func WithFlag(ctx context.Context, flag StorageFlag) context.Context {
-	return context.WithValue(ctx, flagCtxKey{}, flag)
-}
-
-func Flag(ctx context.Context) StorageFlag {
-	fl, _ := ctx.Value(flagCtxKey{}).(StorageFlag)
-	return fl
-}
-
 type Range struct {
 	Offset uint64
 	Length uint32
+}
+
+type Resource struct {
+	MAC   MAC
+	Size  int64     // -1 if unknown
+	MTime time.Time // zero if not known
 }
 
 type Store interface {
@@ -79,11 +74,11 @@ type Store interface {
 	Flags() location.Flags
 
 	Mode(context.Context) (Mode, error)
-	Size(context.Context) (int64, error) // this can be costly, call with caution
-	List(context.Context, StorageResource) ([]MAC, error)
-	Put(context.Context, StorageResource, MAC, io.Reader) (int64, error)
-	Get(context.Context, StorageResource, MAC, *Range) (io.ReadCloser, error)
-	Delete(context.Context, StorageResource, MAC) error
+	Size(context.Context) (int64, error) // this can be costly, call with caution // XXX remove?
+	List(context.Context, StorageResource, StorageFlag) iter.Seq2[Resource, error]
+	Put(context.Context, StorageResource, StorageFlag, MAC, io.Reader) (int64, error)
+	Get(context.Context, StorageResource, StorageFlag, MAC, *Range) (io.ReadCloser, error)
+	Delete(context.Context, StorageResource, StorageFlag, MAC) error
 
 	Close(ctx context.Context) error
 }
