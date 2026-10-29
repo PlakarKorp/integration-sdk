@@ -7,3 +7,9 @@ connectors:
   - type: inventory
     executable: example-inventory
     validator: ./cmd/example-inventory/schema.json
+  - type: provisioner
+    executable: example-provisioner
+    protocols: [example-localdir]
+    class: file-storage
+    validator: ./cmd/example-provisioner/schema.json
+    ui: ./cmd/example-provisioner/ui.json

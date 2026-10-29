@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Example local directory provisioner",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["base_dir", "flavor"],
+  "properties": {
+    "base_dir": {
+      "type": "string",
+      "minLength": 1,
+      "default": "/tmp/plakar-restores",
+      "description": "Directory the restore targets are created under. Must exist."
+    },
+    "parent": {
+      "type": "string",
+      "description": "Existing directory under base_dir to create the target in."
+    },
+    "name_prefix": {
+      "type": "string",
+      "default": "restore",
+      "description": "Prefix of the created directory's name."
+    },
+    "flavor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Size of the target. Recorded in the created directory."
+    }
+  }
+}
