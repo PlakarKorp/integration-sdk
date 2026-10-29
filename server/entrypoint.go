@@ -76,3 +76,14 @@ func EntrypointSecretProvider(constructor SecretProviderFn, args []string) {
 
 	os.Exit(0)
 }
+
+// EntrypointProvisioner runs a provisioner, with the resolver its form's
+// dynamic fields name, or nil.
+func EntrypointProvisioner(constructor ProvisionerFn, resolver integration.Resolver, args []string) {
+	checkArgs(args)
+	if err := RunProvisioner(constructor, resolver); err != nil && !errors.Is(err, io.EOF) {
+		fmt.Fprintf(os.Stderr, "provisioner plugin failed unexpectedly: %s\n", err)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}

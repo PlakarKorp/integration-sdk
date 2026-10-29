@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+option go_package = "github.com/PlakarKorp/integration-sdk/proto/provisioner";
+
+package provisioner;
+
+// Provisioner creates a resource a snapshot can be restored into, and hands
+// back the target an exporter restores to.
+service Provisioner {
+  rpc Init(InitRequest) returns (InitResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Provision(ProvisionRequest) returns (ProvisionResponse);
+  rpc Deprovision(DeprovisionRequest) returns (DeprovisionResponse);
+  rpc Close(CloseRequest) returns (CloseResponse);
+}
+
+message InitRequest {
+  map<string, string> config = 1;
+}
+
+message InitResponse {}
+
+message PingRequest {}
+
+message PingResponse {}
+
+message ProvisionRequest {
+  // Labels the provisioner attaches to what it creates, as the provider
+  // allows: at least the job it was created for.
+  map<string, string> labels = 1;
+}
+
+message ProvisionResponse {
+  // Handle names what was created, for Deprovision.
+  string handle = 1;
+  // Protocol is the exporter the target is for.
+  string protocol = 2;
+  // Target is the exporter's configuration, location included. It may hold
+  // credentials: it is for the restore, not for storage.
+  map<string, string> target = 3;
+}
+
+message DeprovisionRequest {
+  string handle = 1;
+}
+
+message DeprovisionResponse {}
+
+message CloseRequest {}
+
+message CloseResponse {}
