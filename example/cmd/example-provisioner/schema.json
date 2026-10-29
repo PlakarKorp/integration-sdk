@@ -3,7 +3,10 @@
   "title": "Example local directory provisioner",
   "type": "object",
   "additionalProperties": false,
-  "required": ["base_dir", "flavor"],
+  "required": [
+    "base_dir",
+    "flavor"
+  ],
   "properties": {
     "base_dir": {
       "type": "string",
@@ -24,6 +27,14 @@
       "type": "string",
       "minLength": 1,
       "description": "Size of the target. Recorded in the created directory."
+    },
+    "sftp_base": {
+      "type": "string",
+      "description": "SFTP URL an SFTP server serves base_dir at, e.g. sftp://user@host:2222/restores. Set, the target is restored over SFTP."
+    },
+    "ssh_identity": {
+      "type": "string",
+      "description": "Private key file that logs into the SFTP server."
     }
   }
 }

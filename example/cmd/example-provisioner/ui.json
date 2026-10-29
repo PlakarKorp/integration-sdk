@@ -1,12 +1,18 @@
 {
   "type": "Categorization",
-  "options": { "variant": "stepper" },
+  "options": {
+    "variant": "stepper"
+  },
   "elements": [
     {
       "type": "Category",
       "label": "Location",
       "elements": [
-        { "type": "Control", "scope": "#/properties/base_dir", "label": "Base directory" },
+        {
+          "type": "Control",
+          "scope": "#/properties/base_dir",
+          "label": "Base directory"
+        },
         {
           "type": "Control",
           "scope": "#/properties/parent",
@@ -16,11 +22,29 @@
             "description": "Directories found under {base_dir}.",
             "optionsSource": {
               "resolver": "dirs",
-              "params": { "base_dir": { "scope": "#/properties/base_dir" } }
+              "params": {
+                "base_dir": {
+                  "scope": "#/properties/base_dir"
+                }
+              }
             }
           }
         },
-        { "type": "Control", "scope": "#/properties/name_prefix", "label": "Name prefix" }
+        {
+          "type": "Control",
+          "scope": "#/properties/name_prefix",
+          "label": "Name prefix"
+        },
+        {
+          "type": "Control",
+          "scope": "#/properties/sftp_base",
+          "label": "SFTP base URL"
+        },
+        {
+          "type": "Control",
+          "scope": "#/properties/ssh_identity",
+          "label": "SSH identity file"
+        }
       ]
     },
     {
@@ -33,9 +57,17 @@
           "label": "Flavor",
           "options": {
             "widget": "table",
-            "columns": ["cpu", "ram", "price", "stock"],
+            "columns": [
+              "cpu",
+              "ram",
+              "price",
+              "stock"
+            ],
             "search": true,
-            "optionsSource": { "resolver": "flavors", "params": {} }
+            "optionsSource": {
+              "resolver": "flavors",
+              "params": {}
+            }
           }
         }
       ]
@@ -43,7 +75,11 @@
     {
       "type": "Category",
       "label": "Review",
-      "elements": [ { "type": "Summary" } ]
+      "elements": [
+        {
+          "type": "Summary"
+        }
+      ]
     }
   ]
 }

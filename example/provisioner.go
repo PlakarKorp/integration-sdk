@@ -21,14 +21,21 @@ type localdir struct {
 	parent  string
 	prefix  string
 	flavor  string
+	// sftpBase and identity, when set, hand the directory back as an sftp
+	// target: the base URL an SFTP server serves baseDir at, and the key
+	// file that logs into it. Without them the target is the fs exporter.
+	sftpBase string
+	identity string
 }
 
 func NewProvisioner(ctx context.Context, params map[string]string) (integration.Provisioner, error) {
 	p := &localdir{
-		baseDir: params["base_dir"],
-		parent:  params["parent"],
-		prefix:  params["name_prefix"],
-		flavor:  params["flavor"],
+		baseDir:  params["base_dir"],
+		parent:   params["parent"],
+		prefix:   params["name_prefix"],
+		flavor:   params["flavor"],
+		sftpBase: strings.TrimRight(params["sftp_base"], "/"),
+		identity: params["ssh_identity"],
 	}
 	if p.baseDir == "" || !filepath.IsAbs(p.baseDir) {
 		return nil, errors.New("base_dir: an absolute path is required")
@@ -69,11 +76,21 @@ func (p *localdir) Provision(ctx context.Context, req integration.ProvisionReque
 			return nil, err
 		}
 	}
-	return &integration.ProvisionResponse{
+	res := &integration.ProvisionResponse{
 		Handle:   dir,
 		Protocol: "fs",
 		Target:   map[string]string{"location": "fs://" + dir},
-	}, nil
+	}
+	if p.sftpBase != "" {
+		rel, _ := filepath.Rel(p.baseDir, dir)
+		res.Protocol = "sftp"
+		res.Target = map[string]string{
+			"location":                 p.sftpBase + "/" + filepath.ToSlash(rel),
+			"identity":                 p.identity,
+			"insecure_ignore_host_key": "true",
+		}
+	}
+	return res, nil
 }
 
 func (p *localdir) Deprovision(ctx context.Context, handle string) error {

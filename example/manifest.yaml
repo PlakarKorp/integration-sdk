@@ -6,6 +6,7 @@ license: ISC
 connectors:
   - type: inventory
     executable: example-inventory
+    protocols: [example-inventory]
     validator: ./cmd/example-inventory/schema.json
   - type: provisioner
     executable: example-provisioner
@@ -13,3 +14,4 @@ connectors:
     class: file-storage
     validator: ./cmd/example-provisioner/schema.json
     ui: ./cmd/example-provisioner/ui.json
+    extra_files: [./cmd/example-provisioner/ui.json]
