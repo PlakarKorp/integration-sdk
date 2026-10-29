@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+option go_package = "github.com/PlakarKorp/integration-sdk/proto/resolver";
+
+package resolver;
+
+// Resolver lists the values a field of a connector's form may take, by asking
+// the provider. A connector serves it next to its own service. It never
+// changes anything at the provider.
+service Resolver {
+  rpc Resolve(ResolveRequest) returns (ResolveResponse);
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message ResolveRequest {
+  // The resolver named by the form's UI schema.
+  string resolver = 1;
+  // The params the UI schema maps to it, secrets already resolved.
+  map<string, string> params = 2;
+  string search = 3;
+  map<string, StringList> filters = 4;
+  // Asks for exactly these options, to judge a saved selection.
+  repeated string values = 5;
+  string cursor = 6;
+  int32 limit = 7;
+}
+
+message Column {
+  string key = 1;
+  string label = 2;
+  // text, number, bytes, money, badge or boolean.
+  string type = 3;
+  string unit = 4;
+  string currency = 5;
+  string per = 6;
+  string secondary = 7;
+  bool hidden = 8;
+  map<string, string> tones = 9;
+}
+
+message Option {
+  string value = 1;
+  string label = 2;
+  string description = 3;
+  // available, warning or unavailable.
+  string state = 4;
+  string reason = 5;
+  map<string, string> attributes = 6;
+}
+
+message Filter {
+  string key = 1;
+  repeated string values = 2;
+}
+
+message ResolveResponse {
+  repeated Column columns = 1;
+  repeated Option options = 2;
+  string next_cursor = 3;
+  // "" offers no search box, "local" lets the form filter what it loaded,
+  // "remote" sends the text in ResolveRequest.search.
+  string search = 4;
+  repeated Filter filters = 5;
+}
