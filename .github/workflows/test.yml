@@ -39,12 +39,6 @@ jobs:
           echo "test_exit=$status" >> "$GITHUB_OUTPUT"
           exit $status
 
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.out
-
       # kortex gets the same reports, sent by the uploader it serves (a public
       # repository cannot use its action) with the job's OIDC token: no secret.
       # A pull request from a fork gets no token and uploads nothing. Failing
