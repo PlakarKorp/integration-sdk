@@ -38,6 +38,10 @@ message InitResponse {
   // payload, otherwise all data will be sent in Export() together
   // with the records.
   bool has_put_data = 5;
+
+  // Whether the server accepts an ExportHeader as the first message
+  // of the Export() stream.
+  bool has_export_header = 6;
 }
 
 message PingRequest {}
@@ -53,6 +57,10 @@ message ExportEntry {
   optional bytes chunk = 3;
 }
 
+message ExportHeader {
+  map<string, string> meta = 1;
+}
+
 message ExportRequest {
   oneof packet {
     // files are either sent as a record followed by multiple chunks
@@ -62,6 +70,9 @@ message ExportRequest {
     // or by a single record with a tracking id and its data being
     // provided by the client hitting PutData() with the same id
     ExportEntry entry = 3;
+
+    // optionally sent once, as the first message of the stream.
+    ExportHeader header = 4;
   }
 }
 

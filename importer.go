@@ -12,7 +12,7 @@ type Importer interface {
 	Root() string
 	Flags() location.Flags
 	Ping(context.Context) error
-	Import(context.Context, chan<- *Record, <-chan *Result) error
+	Import(context.Context, chan<- *Record, <-chan *Result) (map[string]string, error)
 	Close(context.Context) error
 }
 

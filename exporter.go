@@ -12,7 +12,7 @@ type Exporter interface {
 	Root() string
 	Flags() location.Flags
 	Ping(context.Context) error
-	Export(context.Context, <-chan *Record, chan<- *Result) error
+	Export(context.Context, map[string]string, <-chan *Record, chan<- *Result) error
 	Close(context.Context) error
 }
 

@@ -36,6 +36,10 @@ type Exporter struct {
 	// the PutData RPC.  When it does not, we fall back to sending the
 	// records and their payloads over the Export stream, one at a time.
 	hasPutData bool
+
+	// hasExportHeader tells whether the server takes the export
+	// metadata as the first message of the Export stream.
+	hasExportHeader bool
 }
 
 // payloadJob is the payload for records sent thru PutData.  buf holds
@@ -106,6 +110,7 @@ func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *int
 	exporter.origin = res.Origin
 	exporter.flags = location.Flags(res.Flags)
 	exporter.hasPutData = res.HasPutData
+	exporter.hasExportHeader = res.HasExportHeader
 
 	return exporter, nil
 }
@@ -405,10 +410,22 @@ func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRe
 	}
 }
 
-func (g *Exporter) Export(ctx context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
+func (g *Exporter) Export(ctx context.Context, meta map[string]string, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	stream, err := g.client.Export(ctx)
 	if err != nil {
 		return unwrap(err)
+	}
+
+	// the metadata is optional
+	if len(meta) != 0 && g.hasExportHeader {
+		err := stream.Send(&proto.ExportRequest{
+			Packet: &proto.ExportRequest_Header{
+				Header: &proto.ExportHeader{Meta: meta},
+			},
+		})
+		if err != nil && !errors.Is(err, io.EOF) {
+			return unwrap(err)
+		}
 	}
 
 	wg, ctx := errgroup.WithContext(ctx)

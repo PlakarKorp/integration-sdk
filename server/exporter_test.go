@@ -35,8 +35,9 @@ type gotRecord struct {
 }
 
 type fakeExporter struct {
-	mu  sync.Mutex
-	got []gotRecord
+	mu   sync.Mutex
+	got  []gotRecord
+	meta map[string]string
 
 	// readLimit, when positive, makes the exporter close a payload
 	// after that many bytes instead of reading it to the end.
@@ -63,8 +64,12 @@ func (f *fakeExporter) Flags() location.Flags       { return 0 }
 func (f *fakeExporter) Ping(context.Context) error  { return nil }
 func (f *fakeExporter) Close(context.Context) error { return nil }
 
-func (f *fakeExporter) Export(ctx context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
+func (f *fakeExporter) Export(ctx context.Context, meta map[string]string, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	defer close(results)
+
+	f.mu.Lock()
+	f.meta = meta
+	f.mu.Unlock()
 
 	var wg sync.WaitGroup
 	for record := range records {
@@ -124,7 +129,7 @@ type failingExporter struct {
 	fail chan error
 }
 
-func (f *failingExporter) Export(ctx context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
+func (f *failingExporter) Export(ctx context.Context, _ map[string]string, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	defer close(results)
 	return <-f.fail
 }
@@ -200,6 +205,20 @@ func dialPlugin(t *testing.T, exp integration.Exporter) proto.ExporterClient {
 func dialOn(t *testing.T, lis *bufconn.Listener) proto.ExporterClient {
 	t.Helper()
 
+	client := proto.NewExporterClient(connect(t, lis))
+	_, err := client.Init(t.Context(), &proto.InitRequest{
+		Options: &proto.Options{Maxconcurrency: 4},
+		Proto:   "p",
+	})
+	require.NoError(t, err)
+
+	return client
+}
+
+// connect opens a client connection to whatever listens on lis.
+func connect(t *testing.T, lis *bufconn.Listener) *grpc.ClientConn {
+	t.Helper()
+
 	conn, err := grpc.NewClient("passthrough://bufconn",
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
@@ -209,14 +228,7 @@ func dialOn(t *testing.T, lis *bufconn.Listener) proto.ExporterClient {
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
 
-	client := proto.NewExporterClient(conn)
-	_, err = client.Init(t.Context(), &proto.InitRequest{
-		Options: &proto.Options{Maxconcurrency: 4},
-		Proto:   "p",
-	})
-	require.NoError(t, err)
-
-	return client
+	return conn
 }
 
 func recordOf(pathname string, size int64) *conn.Record {
@@ -759,4 +771,75 @@ func TestExporterServerAnnouncesPutData(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, res.HasPutData, "the handshake does not announce PutData support")
+	require.True(t, res.HasExportHeader, "the handshake does not announce the export header")
+}
+
+// the metadata is optional, and only ever the first message.
+func TestExporterServerExportMeta(t *testing.T) {
+	meta := map[string]string{"snapshot": "abcd"}
+	header := &proto.ExportRequest{
+		Packet: &proto.ExportRequest_Header{
+			Header: &proto.ExportHeader{Meta: meta},
+		},
+	}
+	entry := func(pathname string) *proto.ExportRequest {
+		e := entryOf(pathname, 4)
+		e.Chunk = []byte("data")
+		return &proto.ExportRequest{
+			Packet: &proto.ExportRequest_Entry{Entry: e},
+		}
+	}
+
+	for _, tc := range []struct {
+		name     string
+		packets  []*proto.ExportRequest
+		wantMeta map[string]string
+		wantGot  int
+		wantErr  bool
+	}{
+		{"header", []*proto.ExportRequest{header, entry("/a"), entry("/b")}, meta, 2, false},
+		{"header only", []*proto.ExportRequest{header}, meta, 0, false},
+		{"no header", []*proto.ExportRequest{entry("/a"), entry("/b")}, nil, 2, false},
+		{"empty", nil, nil, 0, false},
+		{"header after a record", []*proto.ExportRequest{entry("/a"), header}, nil, 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exp := &fakeExporter{}
+			client := dialPlugin(t, exp)
+
+			stream, err := client.Export(t.Context())
+			require.NoError(t, err)
+
+			for _, pkt := range tc.packets {
+				require.NoError(t, stream.Send(pkt))
+			}
+			require.NoError(t, stream.CloseSend())
+
+			done := make(chan error, 1)
+			go func() {
+				for {
+					if _, err := stream.Recv(); err != nil {
+						done <- err
+						return
+					}
+				}
+			}()
+
+			select {
+			case err := <-done:
+				if tc.wantErr {
+					require.NotErrorIs(t, err, io.EOF)
+				} else {
+					require.ErrorIs(t, err, io.EOF)
+				}
+			case <-time.After(5 * time.Second):
+				require.Fail(t, "timeout waiting for the export to finish")
+			}
+
+			exp.mu.Lock()
+			defer exp.mu.Unlock()
+			require.Equal(t, tc.wantMeta, exp.meta)
+			require.Len(t, exp.got, tc.wantGot)
+		})
+	}
 }

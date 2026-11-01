@@ -235,10 +235,10 @@ func (g *Importer) sendResults(stream grpc.BidiStreamingClient[proto.ImportReque
 	return stream.CloseSend()
 }
 
-func (g *Importer) Import(ctx context.Context, records chan<- *integration.Record, results <-chan *integration.Result) error {
+func (g *Importer) Import(ctx context.Context, records chan<- *integration.Record, results <-chan *integration.Result) (map[string]string, error) {
 	stream, err := g.client.Import(ctx)
 	if err != nil {
-		return unwrap(err)
+		return nil, unwrap(err)
 	}
 
 	var wg errgroup.Group
@@ -252,20 +252,24 @@ func (g *Importer) Import(ctx context.Context, records chan<- *integration.Recor
 	})
 
 	if err := wg.Wait(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// the importer could have returned an error, and since
 	// receiveRecords() stops as soon as it sees a Finished
-	// record, we need to try to continue to read a bit to
-	// not miss it.
+	// record, we need to try to continue to read a bit to not
+	// miss it.  The trailer comes in the meantime, too.
+	var meta map[string]string
 	for {
-		_, err := stream.Recv()
+		res, err := stream.Recv()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				return nil
+				return meta, nil
 			}
-			return unwrap(err)
+			return nil, unwrap(err)
+		}
+		if res.Trailer != nil {
+			meta = res.Trailer.Meta
 		}
 	}
 }

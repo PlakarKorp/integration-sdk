@@ -65,11 +65,12 @@ func (plugin *exporterPluginServer) Init(ctx context.Context, req *proto.InitReq
 	}
 
 	return &proto.InitResponse{
-		Origin:     exp.Origin(),
-		Type:       exp.Type(),
-		Root:       exp.Root(),
-		Flags:      uint32(plugin.flags),
-		HasPutData: true,
+		Origin:          exp.Origin(),
+		Type:            exp.Type(),
+		Root:            exp.Root(),
+		Flags:           uint32(plugin.flags),
+		HasPutData:      true,
+		HasExportHeader: true,
 	}, nil
 }
 
@@ -172,7 +173,9 @@ func (s *streamReader) close() error {
 	return nil
 }
 
-func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], records chan *integration.Record) error {
+// receiveRecords hands the records on the stream to the exporter,
+// starting with first if it is not nil.
+func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream grpc.BidiStreamingServer[proto.ExportRequest, proto.ExportResponse], first *proto.ExportRequest, records chan *integration.Record) error {
 	defer func() {
 		close(records)
 
@@ -185,15 +188,21 @@ func (plugin *exporterPluginServer) receiveRecords(ctx context.Context, stream g
 	}()
 
 	for {
-		res, err := stream.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				err = nil
+		res := first
+		first = nil
+		if res == nil {
+			var err error
+			res, err = stream.Recv()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					err = nil
+				}
+				return err
 			}
-			return err
 		}
 
 		var (
+			err    error
 			record *integration.Record
 			end    chan struct{}
 		)
@@ -365,6 +374,18 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 		return err
 	}
 
+	// the header is optional: older clients start with the records.
+	first, err := stream.Recv()
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
+	var meta map[string]string
+	if h, ok := first.GetPacket().(*proto.ExportRequest_Header); ok {
+		meta = h.Header.GetMeta()
+		first = nil
+	}
+
 	var (
 		size    = plugin.maxConcurrency
 		records = make(chan *integration.Record, size)
@@ -375,7 +396,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 	ctx, cancel := context.WithCancel(stream.Context())
 
 	wg.Go(func() error {
-		return plugin.receiveRecords(ctx, stream, records)
+		return plugin.receiveRecords(ctx, stream, first, records)
 	})
 
 	wg.Go(func() error {
@@ -383,7 +404,7 @@ func (plugin *exporterPluginServer) Export(stream grpc.BidiStreamingServer[proto
 		return plugin.transmitResults(stream, results)
 	})
 
-	if err := exp.Export(ctx, records, results); err != nil {
+	if err := exp.Export(ctx, meta, records, results); err != nil {
 		cancel()
 		return err
 	}
