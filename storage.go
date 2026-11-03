@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"iter"
 	"time"
@@ -84,3 +85,23 @@ type Store interface {
 }
 
 type StoreFn func(context.Context, string, map[string]string) (Store, error)
+
+var storeBackends = location.New[StoreFn]("fs")
+
+func RegisterStore(name string, flags location.Flags, backend StoreFn) error {
+	if !storeBackends.Register(name, backend, flags) {
+		return fmt.Errorf("storage backend '%s' already registered", name)
+	}
+	return nil
+}
+
+func UnregisterStore(name string) error {
+	if !storeBackends.Unregister(name) {
+		return fmt.Errorf("storage backend '%s' not registered", name)
+	}
+	return nil
+}
+
+func StoreBackends() []string {
+	return storeBackends.Names()
+}
