@@ -210,8 +210,8 @@ func (s *Store) legacylist(ctx context.Context, req *proto.ListRequest) ([]integ
 	return macs, nil
 }
 
-func (s *Store) List(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag) iter.Seq2[integration.Resource, error] {
-	return func(yield func(integration.Resource, error) bool) {
+func (s *Store) List(ctx context.Context, res integration.StorageResource, flag integration.StorageFlag) iter.Seq2[integration.StorageResourceEntry, error] {
+	return func(yield func(integration.StorageResourceEntry, error) bool) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel() // tear down the stream on early exit
 
@@ -225,7 +225,7 @@ func (s *Store) List(ctx context.Context, res integration.StorageResource, flag 
 		// itself.  go figure...
 		resp, err := s.client.ListStream(ctx, req)
 		if err != nil {
-			yield(integration.Resource{}, err)
+			yield(integration.StorageResourceEntry{}, err)
 			return
 		}
 
@@ -238,19 +238,19 @@ func (s *Store) List(ctx context.Context, res integration.StorageResource, flag 
 			if first && status.Code(err) == codes.Unimplemented {
 				macs, err := s.legacylist(ctx, req)
 				if err != nil {
-					yield(integration.Resource{}, err)
+					yield(integration.StorageResourceEntry{}, err)
 					return
 				}
 				for _, mac := range macs {
 					// we only have macs in the legacy list
-					if !yield(integration.Resource{MAC: mac}, nil) {
+					if !yield(integration.StorageResourceEntry{MAC: mac}, nil) {
 						return
 					}
 				}
 				return
 			}
 			if err != nil {
-				yield(integration.Resource{}, err)
+				yield(integration.StorageResourceEntry{}, err)
 				return
 			}
 
@@ -258,16 +258,16 @@ func (s *Store) List(ctx context.Context, res integration.StorageResource, flag 
 
 			for _, res := range lres.Resources {
 				if res == nil {
-					yield(integration.Resource{}, fmt.Errorf("got nil resource"))
+					yield(integration.StorageResourceEntry{}, fmt.Errorf("got nil resource"))
 					return
 				}
 
 				if len(res.Mac) != len(integration.MAC{}) {
-					yield(integration.Resource{}, fmt.Errorf("invalid MAC length: %d", len(res.Mac)))
+					yield(integration.StorageResourceEntry{}, fmt.Errorf("invalid MAC length: %d", len(res.Mac)))
 					return
 				}
 
-				r := integration.Resource{
+				r := integration.StorageResourceEntry{
 					MAC:   integration.MAC(res.Mac),
 					Size:  res.Size,
 					MTime: res.Mtime.AsTime(),

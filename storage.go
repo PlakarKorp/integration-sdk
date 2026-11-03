@@ -58,7 +58,7 @@ type Range struct {
 	Length uint32
 }
 
-type Resource struct {
+type StorageResourceEntry struct {
 	MAC   MAC
 	Size  int64     // -1 if unknown
 	MTime time.Time // zero if not known
@@ -76,7 +76,7 @@ type Store interface {
 
 	Mode(context.Context) (Mode, error)
 	Size(context.Context) (int64, error) // this can be costly, call with caution // XXX remove?
-	List(context.Context, StorageResource, StorageFlag) iter.Seq2[Resource, error]
+	List(context.Context, StorageResource, StorageFlag) iter.Seq2[StorageResourceEntry, error]
 	Put(context.Context, StorageResource, StorageFlag, MAC, io.Reader) (int64, error)
 	Get(context.Context, StorageResource, StorageFlag, MAC, *Range) (io.ReadCloser, error)
 	Delete(context.Context, StorageResource, StorageFlag, MAC) error
