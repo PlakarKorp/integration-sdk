@@ -9,8 +9,17 @@ import (
 	"github.com/PlakarKorp/integration-sdk/client"
 	proto "github.com/PlakarKorp/integration-sdk/proto/storage"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func macOf(b []byte) (integration.MAC, error) {
+	if len(b) != len(integration.MAC{}) {
+		return integration.MAC{}, status.Errorf(codes.InvalidArgument, "invalid MAC length: %d", len(b))
+	}
+	return integration.MAC(b), nil
+}
 
 type storagePluginServer struct {
 	constructor integration.StoreFn
@@ -176,9 +185,13 @@ func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[proto.P
 		return err
 	}
 
+	mac, err := macOf(req.Mac)
+	if err != nil {
+		return err
+	}
+
 	var (
 		res  = integration.StorageResource(req.Type)
-		mac  = integration.MAC(req.Mac)
 		flag = integration.StorageFlag(req.Flags)
 	)
 
@@ -202,10 +215,14 @@ func (plugin *storagePluginServer) Get(req *proto.GetRequest, stream grpc.Server
 		return err
 	}
 
+	mac, err := macOf(req.Mac)
+	if err != nil {
+		return err
+	}
+
 	var (
 		res  = integration.StorageResource(req.Type)
 		flag = integration.StorageFlag(req.Flags)
-		mac  = integration.MAC(req.Mac)
 
 		rg *integration.Range
 	)
@@ -237,10 +254,14 @@ func (plugin *storagePluginServer) Delete(ctx context.Context, req *proto.Delete
 		return nil, err
 	}
 
+	mac, err := macOf(req.Mac)
+	if err != nil {
+		return nil, err
+	}
+
 	var (
 		res  = integration.StorageResource(req.Type)
 		flag = integration.StorageFlag(req.Flags)
-		mac  = integration.MAC(req.Mac)
 	)
 
 	if err := store.Delete(ctx, res, flag, mac); err != nil {
