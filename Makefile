@@ -11,4 +11,9 @@ check:
 	${GO} vet ./...
 	${GO} test ./...
 
-.PHONY: all rec test check
+coverage:
+	${GO} test -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+	grep -v -E '\.pb\.go:' coverage.out > coverage.out.tmp && mv coverage.out.tmp coverage.out
+	${GO} tool cover -func=coverage.out | tail -1
+
+.PHONY: all rec test check coverage
