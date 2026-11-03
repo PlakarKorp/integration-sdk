@@ -130,3 +130,16 @@ func TestResultRoundTrip(t *testing.T) {
 	require.EqualError(t, got.Err, "boom")
 	require.Equal(t, r.Record.Pathname, got.Record.Pathname)
 }
+
+func TestFromProto_MissingRecordOrResult(t *testing.T) {
+	_, err := RecordFromProto(nil)
+	require.ErrorIs(t, err, ErrInvalidRecord)
+
+	_, err = ResultFromProto(nil)
+	require.ErrorIs(t, err, ErrInvalidRecord)
+
+	// a result whose record cannot be decoded fails the same way
+	_, err = ResultFromProto(&Result{Header: &Record{Pathname: "/nofi"}})
+	require.ErrorIs(t, err, ErrInvalidRecord)
+	require.ErrorContains(t, err, "missing fileinfo")
+}

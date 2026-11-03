@@ -55,3 +55,10 @@ func TestInitListenerRejectsNonUnix(t *testing.T) {
 	_, _, err := initListener()
 	require.Error(t, err, "a non-unix address has to be rejected")
 }
+
+func TestInitListenerListenFailure(t *testing.T) {
+	t.Setenv(ListenEnv, "unix://"+filepath.Join(t.TempDir(), "missing", "plugin.sock"))
+
+	_, _, err := initListener()
+	require.Error(t, err)
+}

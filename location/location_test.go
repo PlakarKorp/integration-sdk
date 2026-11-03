@@ -316,3 +316,15 @@ func TestLocationLifecycle(t *testing.T) {
 		require.Equal(t, []string{"fs", "s3"}, names)
 	})
 }
+
+func TestParseFlagExporterAndOrderingFlags(t *testing.T) {
+	for name, want := range map[string]location.Flags{
+		"exportxattr":  location.FLAG_EXPORTXATTR,
+		"walkdirorder": location.FLAG_WALKDIRORDER,
+		"nocache":      location.FLAG_NOCACHE,
+	} {
+		flag, err := location.ParseFlag(name)
+		require.NoError(t, err, name)
+		require.Equal(t, want, flag, name)
+	}
+}

@@ -39,6 +39,17 @@ jobs:
           echo "test_exit=$status" >> "$GITHUB_OUTPUT"
           exit $status
 
+      # The generated protobuf code is not ours to cover: drop it from the
+      # profile before it is uploaded, keeping the mode header. The test
+      # step may have failed before writing a profile at all, which is not
+      # this step's failure to report.
+      - name: Drop generated code from the coverage profile
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f coverage.out ]; then
+            grep -v -E '\.pb\.go:' coverage.out > coverage.out.tmp && mv coverage.out.tmp coverage.out
+          fi
+
       # kortex gets the same reports, sent by the uploader it serves (a public
       # repository cannot use its action) with the job's OIDC token: no secret.
       # A pull request from a fork gets no token and uploads nothing. Failing
