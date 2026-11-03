@@ -9,6 +9,7 @@ package storage
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -805,6 +806,110 @@ func (x *ListResponse) GetMacs() [][]byte {
 	return nil
 }
 
+type Resource struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Mac           []byte                 `protobuf:"bytes,1,opt,name=mac,proto3" json:"mac,omitempty"`
+	Size          int64                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	Mtime         *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=mtime,proto3" json:"mtime,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Resource) Reset() {
+	*x = Resource{}
+	mi := &file_storage_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Resource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Resource) ProtoMessage() {}
+
+func (x *Resource) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Resource.ProtoReflect.Descriptor instead.
+func (*Resource) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *Resource) GetMac() []byte {
+	if x != nil {
+		return x.Mac
+	}
+	return nil
+}
+
+func (x *Resource) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *Resource) GetMtime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Mtime
+	}
+	return nil
+}
+
+type ListStreamResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Resources     []*Resource            `protobuf:"bytes,1,rep,name=resources,proto3" json:"resources,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListStreamResponse) Reset() {
+	*x = ListStreamResponse{}
+	mi := &file_storage_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListStreamResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListStreamResponse) ProtoMessage() {}
+
+func (x *ListStreamResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_storage_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListStreamResponse.ProtoReflect.Descriptor instead.
+func (*ListStreamResponse) Descriptor() ([]byte, []int) {
+	return file_storage_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ListStreamResponse) GetResources() []*Resource {
+	if x != nil {
+		return x.Resources
+	}
+	return nil
+}
+
 type PutRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Mac           []byte                 `protobuf:"bytes,1,opt,name=mac,proto3" json:"mac,omitempty"`
@@ -817,7 +922,7 @@ type PutRequest struct {
 
 func (x *PutRequest) Reset() {
 	*x = PutRequest{}
-	mi := &file_storage_proto_msgTypes[16]
+	mi := &file_storage_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -829,7 +934,7 @@ func (x *PutRequest) String() string {
 func (*PutRequest) ProtoMessage() {}
 
 func (x *PutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[16]
+	mi := &file_storage_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -842,7 +947,7 @@ func (x *PutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutRequest.ProtoReflect.Descriptor instead.
 func (*PutRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{16}
+	return file_storage_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PutRequest) GetMac() []byte {
@@ -882,7 +987,7 @@ type PutResponse struct {
 
 func (x *PutResponse) Reset() {
 	*x = PutResponse{}
-	mi := &file_storage_proto_msgTypes[17]
+	mi := &file_storage_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -894,7 +999,7 @@ func (x *PutResponse) String() string {
 func (*PutResponse) ProtoMessage() {}
 
 func (x *PutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[17]
+	mi := &file_storage_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -907,7 +1012,7 @@ func (x *PutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PutResponse.ProtoReflect.Descriptor instead.
 func (*PutResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{17}
+	return file_storage_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PutResponse) GetBytesWritten() int64 {
@@ -929,7 +1034,7 @@ type GetRequest struct {
 
 func (x *GetRequest) Reset() {
 	*x = GetRequest{}
-	mi := &file_storage_proto_msgTypes[18]
+	mi := &file_storage_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -941,7 +1046,7 @@ func (x *GetRequest) String() string {
 func (*GetRequest) ProtoMessage() {}
 
 func (x *GetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[18]
+	mi := &file_storage_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -954,7 +1059,7 @@ func (x *GetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRequest.ProtoReflect.Descriptor instead.
 func (*GetRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{18}
+	return file_storage_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetRequest) GetMac() []byte {
@@ -994,7 +1099,7 @@ type GetResponse struct {
 
 func (x *GetResponse) Reset() {
 	*x = GetResponse{}
-	mi := &file_storage_proto_msgTypes[19]
+	mi := &file_storage_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1006,7 +1111,7 @@ func (x *GetResponse) String() string {
 func (*GetResponse) ProtoMessage() {}
 
 func (x *GetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[19]
+	mi := &file_storage_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1019,7 +1124,7 @@ func (x *GetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResponse.ProtoReflect.Descriptor instead.
 func (*GetResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{19}
+	return file_storage_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GetResponse) GetChunk() []byte {
@@ -1040,7 +1145,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_storage_proto_msgTypes[20]
+	mi := &file_storage_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1052,7 +1157,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[20]
+	mi := &file_storage_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1065,7 +1170,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{20}
+	return file_storage_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DeleteRequest) GetMac() []byte {
@@ -1097,7 +1202,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_storage_proto_msgTypes[21]
+	mi := &file_storage_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1214,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[21]
+	mi := &file_storage_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1122,7 +1227,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{21}
+	return file_storage_proto_rawDescGZIP(), []int{23}
 }
 
 type GetRequest_Range struct {
@@ -1135,7 +1240,7 @@ type GetRequest_Range struct {
 
 func (x *GetRequest_Range) Reset() {
 	*x = GetRequest_Range{}
-	mi := &file_storage_proto_msgTypes[23]
+	mi := &file_storage_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1147,7 +1252,7 @@ func (x *GetRequest_Range) String() string {
 func (*GetRequest_Range) ProtoMessage() {}
 
 func (x *GetRequest_Range) ProtoReflect() protoreflect.Message {
-	mi := &file_storage_proto_msgTypes[23]
+	mi := &file_storage_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1160,7 +1265,7 @@ func (x *GetRequest_Range) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRequest_Range.ProtoReflect.Descriptor instead.
 func (*GetRequest_Range) Descriptor() ([]byte, []int) {
-	return file_storage_proto_rawDescGZIP(), []int{18, 0}
+	return file_storage_proto_rawDescGZIP(), []int{20, 0}
 }
 
 func (x *GetRequest_Range) GetOffset() uint64 {
@@ -1181,7 +1286,7 @@ var File_storage_proto protoreflect.FileDescriptor
 
 const file_storage_proto_rawDesc = "" +
 	"\n" +
-	"\rstorage.proto\x12\x05store\"\x96\x01\n" +
+	"\rstorage.proto\x12\x05store\x1a\x1fgoogle/protobuf/timestamp.proto\"\x96\x01\n" +
 	"\vInitRequest\x12\x14\n" +
 	"\x05proto\x18\x01 \x01(\tR\x05proto\x126\n" +
 	"\x06config\x18\x02 \x03(\v2\x1e.store.InitRequest.ConfigEntryR\x06config\x1a9\n" +
@@ -1213,7 +1318,13 @@ const file_storage_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2\x16.store.StorageResourceR\x04type\x12)\n" +
 	"\x05flags\x18\x02 \x01(\x0e2\x13.store.StorageFlagsR\x05flags\"\"\n" +
 	"\fListResponse\x12\x12\n" +
-	"\x04macs\x18\x01 \x03(\fR\x04macs\"\x8b\x01\n" +
+	"\x04macs\x18\x01 \x03(\fR\x04macs\"b\n" +
+	"\bResource\x12\x10\n" +
+	"\x03mac\x18\x01 \x01(\fR\x03mac\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x03R\x04size\x120\n" +
+	"\x05mtime\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x05mtime\"C\n" +
+	"\x12ListStreamResponse\x12-\n" +
+	"\tresources\x18\x01 \x03(\v2\x0f.store.ResourceR\tresources\"\x8b\x01\n" +
 	"\n" +
 	"PutRequest\x12\x10\n" +
 	"\x03mac\x18\x01 \x01(\fR\x03mac\x12*\n" +
@@ -1248,7 +1359,7 @@ const file_storage_proto_rawDesc = "" +
 	"\x1aSTORAGE_RESOURCE_ECC_STATE\x10\x05*B\n" +
 	"\fStorageFlags\x12\x1b\n" +
 	"\x17STORAGE_FLAGS_UNDEFINED\x10\x00\x12\x15\n" +
-	"\x11STORAGE_FLAGS_HOT\x10\x012\xaf\x04\n" +
+	"\x11STORAGE_FLAGS_HOT\x10\x012\xee\x04\n" +
 	"\x05Store\x12/\n" +
 	"\x04Init\x12\x12.store.InitRequest\x1a\x13.store.InitResponse\x125\n" +
 	"\x06Create\x12\x14.store.CreateRequest\x1a\x15.store.CreateResponse\x12/\n" +
@@ -1256,7 +1367,9 @@ const file_storage_proto_rawDesc = "" +
 	"\x04Ping\x12\x12.store.PingRequest\x1a\x13.store.PingResponse\x12/\n" +
 	"\x04Mode\x12\x12.store.ModeRequest\x1a\x13.store.ModeResponse\x12/\n" +
 	"\x04Size\x12\x12.store.SizeRequest\x1a\x13.store.SizeResponse\x12/\n" +
-	"\x04List\x12\x12.store.ListRequest\x1a\x13.store.ListResponse\x12.\n" +
+	"\x04List\x12\x12.store.ListRequest\x1a\x13.store.ListResponse\x12=\n" +
+	"\n" +
+	"ListStream\x12\x12.store.ListRequest\x1a\x19.store.ListStreamResponse0\x01\x12.\n" +
 	"\x03Put\x12\x11.store.PutRequest\x1a\x12.store.PutResponse(\x01\x12.\n" +
 	"\x03Get\x12\x11.store.GetRequest\x1a\x12.store.GetResponse0\x01\x125\n" +
 	"\x06Delete\x12\x14.store.DeleteRequest\x1a\x15.store.DeleteResponse\x122\n" +
@@ -1275,73 +1388,80 @@ func file_storage_proto_rawDescGZIP() []byte {
 }
 
 var file_storage_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_storage_proto_goTypes = []any{
-	(StorageResource)(0),     // 0: store.StorageResource
-	(StorageFlags)(0),        // 1: store.StorageFlags
-	(*InitRequest)(nil),      // 2: store.InitRequest
-	(*InitResponse)(nil),     // 3: store.InitResponse
-	(*CreateRequest)(nil),    // 4: store.CreateRequest
-	(*CreateResponse)(nil),   // 5: store.CreateResponse
-	(*OpenRequest)(nil),      // 6: store.OpenRequest
-	(*OpenResponse)(nil),     // 7: store.OpenResponse
-	(*PingRequest)(nil),      // 8: store.PingRequest
-	(*PingResponse)(nil),     // 9: store.PingResponse
-	(*ModeRequest)(nil),      // 10: store.ModeRequest
-	(*ModeResponse)(nil),     // 11: store.ModeResponse
-	(*CloseRequest)(nil),     // 12: store.CloseRequest
-	(*CloseResponse)(nil),    // 13: store.CloseResponse
-	(*SizeRequest)(nil),      // 14: store.SizeRequest
-	(*SizeResponse)(nil),     // 15: store.SizeResponse
-	(*ListRequest)(nil),      // 16: store.ListRequest
-	(*ListResponse)(nil),     // 17: store.ListResponse
-	(*PutRequest)(nil),       // 18: store.PutRequest
-	(*PutResponse)(nil),      // 19: store.PutResponse
-	(*GetRequest)(nil),       // 20: store.GetRequest
-	(*GetResponse)(nil),      // 21: store.GetResponse
-	(*DeleteRequest)(nil),    // 22: store.DeleteRequest
-	(*DeleteResponse)(nil),   // 23: store.DeleteResponse
-	nil,                      // 24: store.InitRequest.ConfigEntry
-	(*GetRequest_Range)(nil), // 25: store.GetRequest.Range
+	(StorageResource)(0),          // 0: store.StorageResource
+	(StorageFlags)(0),             // 1: store.StorageFlags
+	(*InitRequest)(nil),           // 2: store.InitRequest
+	(*InitResponse)(nil),          // 3: store.InitResponse
+	(*CreateRequest)(nil),         // 4: store.CreateRequest
+	(*CreateResponse)(nil),        // 5: store.CreateResponse
+	(*OpenRequest)(nil),           // 6: store.OpenRequest
+	(*OpenResponse)(nil),          // 7: store.OpenResponse
+	(*PingRequest)(nil),           // 8: store.PingRequest
+	(*PingResponse)(nil),          // 9: store.PingResponse
+	(*ModeRequest)(nil),           // 10: store.ModeRequest
+	(*ModeResponse)(nil),          // 11: store.ModeResponse
+	(*CloseRequest)(nil),          // 12: store.CloseRequest
+	(*CloseResponse)(nil),         // 13: store.CloseResponse
+	(*SizeRequest)(nil),           // 14: store.SizeRequest
+	(*SizeResponse)(nil),          // 15: store.SizeResponse
+	(*ListRequest)(nil),           // 16: store.ListRequest
+	(*ListResponse)(nil),          // 17: store.ListResponse
+	(*Resource)(nil),              // 18: store.Resource
+	(*ListStreamResponse)(nil),    // 19: store.ListStreamResponse
+	(*PutRequest)(nil),            // 20: store.PutRequest
+	(*PutResponse)(nil),           // 21: store.PutResponse
+	(*GetRequest)(nil),            // 22: store.GetRequest
+	(*GetResponse)(nil),           // 23: store.GetResponse
+	(*DeleteRequest)(nil),         // 24: store.DeleteRequest
+	(*DeleteResponse)(nil),        // 25: store.DeleteResponse
+	nil,                           // 26: store.InitRequest.ConfigEntry
+	(*GetRequest_Range)(nil),      // 27: store.GetRequest.Range
+	(*timestamppb.Timestamp)(nil), // 28: google.protobuf.Timestamp
 }
 var file_storage_proto_depIdxs = []int32{
-	24, // 0: store.InitRequest.config:type_name -> store.InitRequest.ConfigEntry
+	26, // 0: store.InitRequest.config:type_name -> store.InitRequest.ConfigEntry
 	0,  // 1: store.ListRequest.type:type_name -> store.StorageResource
 	1,  // 2: store.ListRequest.flags:type_name -> store.StorageFlags
-	0,  // 3: store.PutRequest.type:type_name -> store.StorageResource
-	1,  // 4: store.PutRequest.flags:type_name -> store.StorageFlags
-	0,  // 5: store.GetRequest.type:type_name -> store.StorageResource
-	25, // 6: store.GetRequest.range:type_name -> store.GetRequest.Range
-	1,  // 7: store.GetRequest.flags:type_name -> store.StorageFlags
-	0,  // 8: store.DeleteRequest.type:type_name -> store.StorageResource
-	1,  // 9: store.DeleteRequest.flags:type_name -> store.StorageFlags
-	2,  // 10: store.Store.Init:input_type -> store.InitRequest
-	4,  // 11: store.Store.Create:input_type -> store.CreateRequest
-	6,  // 12: store.Store.Open:input_type -> store.OpenRequest
-	8,  // 13: store.Store.Ping:input_type -> store.PingRequest
-	10, // 14: store.Store.Mode:input_type -> store.ModeRequest
-	14, // 15: store.Store.Size:input_type -> store.SizeRequest
-	16, // 16: store.Store.List:input_type -> store.ListRequest
-	18, // 17: store.Store.Put:input_type -> store.PutRequest
-	20, // 18: store.Store.Get:input_type -> store.GetRequest
-	22, // 19: store.Store.Delete:input_type -> store.DeleteRequest
-	12, // 20: store.Store.Close:input_type -> store.CloseRequest
-	3,  // 21: store.Store.Init:output_type -> store.InitResponse
-	5,  // 22: store.Store.Create:output_type -> store.CreateResponse
-	7,  // 23: store.Store.Open:output_type -> store.OpenResponse
-	9,  // 24: store.Store.Ping:output_type -> store.PingResponse
-	11, // 25: store.Store.Mode:output_type -> store.ModeResponse
-	15, // 26: store.Store.Size:output_type -> store.SizeResponse
-	17, // 27: store.Store.List:output_type -> store.ListResponse
-	19, // 28: store.Store.Put:output_type -> store.PutResponse
-	21, // 29: store.Store.Get:output_type -> store.GetResponse
-	23, // 30: store.Store.Delete:output_type -> store.DeleteResponse
-	13, // 31: store.Store.Close:output_type -> store.CloseResponse
-	21, // [21:32] is the sub-list for method output_type
-	10, // [10:21] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	28, // 3: store.Resource.mtime:type_name -> google.protobuf.Timestamp
+	18, // 4: store.ListStreamResponse.resources:type_name -> store.Resource
+	0,  // 5: store.PutRequest.type:type_name -> store.StorageResource
+	1,  // 6: store.PutRequest.flags:type_name -> store.StorageFlags
+	0,  // 7: store.GetRequest.type:type_name -> store.StorageResource
+	27, // 8: store.GetRequest.range:type_name -> store.GetRequest.Range
+	1,  // 9: store.GetRequest.flags:type_name -> store.StorageFlags
+	0,  // 10: store.DeleteRequest.type:type_name -> store.StorageResource
+	1,  // 11: store.DeleteRequest.flags:type_name -> store.StorageFlags
+	2,  // 12: store.Store.Init:input_type -> store.InitRequest
+	4,  // 13: store.Store.Create:input_type -> store.CreateRequest
+	6,  // 14: store.Store.Open:input_type -> store.OpenRequest
+	8,  // 15: store.Store.Ping:input_type -> store.PingRequest
+	10, // 16: store.Store.Mode:input_type -> store.ModeRequest
+	14, // 17: store.Store.Size:input_type -> store.SizeRequest
+	16, // 18: store.Store.List:input_type -> store.ListRequest
+	16, // 19: store.Store.ListStream:input_type -> store.ListRequest
+	20, // 20: store.Store.Put:input_type -> store.PutRequest
+	22, // 21: store.Store.Get:input_type -> store.GetRequest
+	24, // 22: store.Store.Delete:input_type -> store.DeleteRequest
+	12, // 23: store.Store.Close:input_type -> store.CloseRequest
+	3,  // 24: store.Store.Init:output_type -> store.InitResponse
+	5,  // 25: store.Store.Create:output_type -> store.CreateResponse
+	7,  // 26: store.Store.Open:output_type -> store.OpenResponse
+	9,  // 27: store.Store.Ping:output_type -> store.PingResponse
+	11, // 28: store.Store.Mode:output_type -> store.ModeResponse
+	15, // 29: store.Store.Size:output_type -> store.SizeResponse
+	17, // 30: store.Store.List:output_type -> store.ListResponse
+	19, // 31: store.Store.ListStream:output_type -> store.ListStreamResponse
+	21, // 32: store.Store.Put:output_type -> store.PutResponse
+	23, // 33: store.Store.Get:output_type -> store.GetResponse
+	25, // 34: store.Store.Delete:output_type -> store.DeleteResponse
+	13, // 35: store.Store.Close:output_type -> store.CloseResponse
+	24, // [24:36] is the sub-list for method output_type
+	12, // [12:24] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_storage_proto_init() }
@@ -1349,14 +1469,14 @@ func file_storage_proto_init() {
 	if File_storage_proto != nil {
 		return
 	}
-	file_storage_proto_msgTypes[18].OneofWrappers = []any{}
+	file_storage_proto_msgTypes[20].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_storage_proto_rawDesc), len(file_storage_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   24,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

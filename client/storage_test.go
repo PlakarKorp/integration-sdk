@@ -174,8 +174,11 @@ func TestStore_List_ValidatesMacLength(t *testing.T) {
 	defer cleanup()
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
-	_, err := s.List(context.Background(), integration.StorageResourcePackfile)
-	require.Error(t, err, "expected validation error for short MAC")
+	var itererr error
+	for _, err := range s.List(context.Background(), integration.StorageResourcePackfile, 0) {
+		itererr = err
+	}
+	require.Error(t, itererr, "expected validation error for short MAC")
 }
 
 func TestStore_List_RoundTripsMacs(t *testing.T) {
@@ -185,9 +188,13 @@ func TestStore_List_RoundTripsMacs(t *testing.T) {
 	defer cleanup()
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
-	got, err := s.List(context.Background(), integration.StorageResourcePackfile)
-	require.NoError(t, err)
-	require.Equal(t, []integration.MAC{integration.MAC(full)}, got)
+	var count int
+	for got, err := range s.List(context.Background(), integration.StorageResourcePackfile, 0) {
+		count++
+		require.NoError(t, err)
+		require.Equal(t, integration.Resource{MAC: integration.MAC(full)}, got)
+	}
+	require.Equal(t, 1, count)
 }
 
 func TestStore_PutStreamsChunks(t *testing.T) {
@@ -202,7 +209,7 @@ func TestStore_PutStreamsChunks(t *testing.T) {
 		mac[i] = byte(i)
 	}
 	payload := []byte("hello world")
-	n, err := s.Put(context.Background(), integration.StorageResourcePackfile, mac, bytes.NewReader(payload))
+	n, err := s.Put(context.Background(), integration.StorageResourcePackfile, 0, mac, bytes.NewReader(payload))
 	require.NoError(t, err)
 	require.Equal(t, int64(11), n, "BytesWritten")
 	require.Equal(t, mac[:], srv.receivedMac)
@@ -238,7 +245,7 @@ func TestStore_PutCutShort(t *testing.T) {
 			s, err := NewStorage(t.Context(), conn, "p", nil)
 			require.NoError(t, err)
 
-			_, err = s.Put(t.Context(), integration.StorageResourcePackfile, integration.MAC{}, endless{})
+			_, err = s.Put(t.Context(), integration.StorageResourcePackfile, 0, integration.MAC{}, endless{})
 			require.ErrorContains(t, err, tc.want)
 		})
 	}
@@ -260,7 +267,7 @@ func TestStore_PutReadErrorCancelsTheStream(t *testing.T) {
 	sentinel := errors.New("disk-on-fire")
 
 	rd := io.MultiReader(bytes.NewReader([]byte("hello")), &errReader{err: sentinel})
-	_, err = s.Put(t.Context(), integration.StorageResourcePackfile, integration.MAC{}, rd)
+	_, err = s.Put(t.Context(), integration.StorageResourcePackfile, 0, integration.MAC{}, rd)
 	require.ErrorContains(t, err, sentinel.Error())
 
 	select {
@@ -279,7 +286,7 @@ func TestStore_GetStreamsChunks(t *testing.T) {
 	defer cleanup()
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
-	rd, err := s.Get(context.Background(), integration.StorageResourcePackfile, integration.MAC{}, nil)
+	rd, err := s.Get(context.Background(), integration.StorageResourcePackfile, 0, integration.MAC{}, nil)
 	require.NoError(t, err)
 	defer rd.Close()
 	data, err := io.ReadAll(rd)
@@ -295,7 +302,7 @@ func TestStore_Get_UnavailableMapsToIOError(t *testing.T) {
 	defer cleanup()
 
 	s, _ := NewStorage(context.Background(), conn, "p", nil)
-	rd, err := s.Get(context.Background(), integration.StorageResourcePackfile, integration.MAC{}, nil)
+	rd, err := s.Get(context.Background(), integration.StorageResourcePackfile, 0, integration.MAC{}, nil)
 	require.NoError(t, err)
 	defer rd.Close()
 
