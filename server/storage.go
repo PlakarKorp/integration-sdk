@@ -14,13 +14,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func macOf(b []byte) (integration.MAC, error) {
-	if len(b) != len(integration.MAC{}) {
-		return integration.MAC{}, status.Errorf(codes.InvalidArgument, "invalid MAC length: %d", len(b))
-	}
-	return integration.MAC(b), nil
-}
-
 type storagePluginServer struct {
 	constructor integration.StoreFn
 	instance    instance[integration.Store]
@@ -185,9 +178,9 @@ func (plugin *storagePluginServer) Put(stream grpc.ClientStreamingServer[proto.P
 		return err
 	}
 
-	mac, err := macOf(req.Mac)
+	mac, err := integration.MACFromBytes(req.Mac)
 	if err != nil {
-		return err
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	var (
@@ -215,9 +208,9 @@ func (plugin *storagePluginServer) Get(req *proto.GetRequest, stream grpc.Server
 		return err
 	}
 
-	mac, err := macOf(req.Mac)
+	mac, err := integration.MACFromBytes(req.Mac)
 	if err != nil {
-		return err
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	var (
@@ -254,9 +247,9 @@ func (plugin *storagePluginServer) Delete(ctx context.Context, req *proto.Delete
 		return nil, err
 	}
 
-	mac, err := macOf(req.Mac)
+	mac, err := integration.MACFromBytes(req.Mac)
 	if err != nil {
-		return nil, err
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	var (

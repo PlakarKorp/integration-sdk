@@ -44,6 +44,14 @@ func (m *MAC) ParseHex(s string) error {
 	return nil
 }
 
+func MACFromBytes(b []byte) (MAC, error) {
+	if len(b) != len(MAC{}) {
+		return MAC{}, fmt.Errorf("invalid MAC length: %d", len(b))
+	}
+
+	return MAC(b), nil
+}
+
 func RandomMAC() MAC {
 	var r MAC
 
