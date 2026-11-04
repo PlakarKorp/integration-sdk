@@ -38,7 +38,7 @@ func TestImporter_StreamFailures(t *testing.T) {
 	boom := errors.New("boom")
 	g := &Importer{client: proto.NewImporterClient(failingConn{boom})}
 
-	err := g.Import(t.Context(), make(chan *integration.Record), make(chan *integration.Result))
+	_, err := g.Import(t.Context(), make(chan *integration.Record), make(chan *integration.Result))
 	require.ErrorIs(t, err, boom)
 
 	_, err = g.open(t.Context(), &integration.Record{Pathname: "/x"})
@@ -120,7 +120,7 @@ func TestImporter_BadRecordsFailImport(t *testing.T) {
 			imp, err := NewImporter(t.Context(), c, &integration.Options{}, "p", nil)
 			require.NoError(t, err)
 
-			err, seen := runImport(t, imp.(*Importer))
+			_, err, seen := runImport(t, imp.(*Importer))
 			require.ErrorContains(t, err, tc.want)
 			require.Empty(t, seen)
 		})

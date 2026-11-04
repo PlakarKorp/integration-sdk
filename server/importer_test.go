@@ -67,7 +67,7 @@ func (f *fakeImporter) Root() string               { return "/r" }
 func (f *fakeImporter) Flags() location.Flags      { return f.flags }
 func (f *fakeImporter) Ping(context.Context) error { return f.pingErr }
 
-func (f *fakeImporter) Import(_ context.Context, records chan<- *integration.Record, results <-chan *integration.Result) error {
+func (f *fakeImporter) Import(_ context.Context, records chan<- *integration.Record, results <-chan *integration.Result) (map[string]string, error) {
 	for _, r := range f.records {
 		records <- r
 	}
@@ -78,7 +78,7 @@ func (f *fakeImporter) Import(_ context.Context, records chan<- *integration.Rec
 			f.acks = append(f.acks, res)
 		}
 	}
-	return f.importErr
+	return nil, f.importErr
 }
 
 func (f *fakeImporter) Close(context.Context) error {
@@ -155,7 +155,7 @@ func TestImporterServerRoundTrip(t *testing.T) {
 			records := make(chan *integration.Record, 4)
 			results := make(chan *integration.Result, 4)
 			done := make(chan error, 1)
-			go func() { done <- imp.Import(ctx, records, results) }()
+			go func() { _, err := imp.Import(ctx, records, results); done <- err }()
 
 			var seen []string
 			for rec := range records {
@@ -205,7 +205,7 @@ func TestImporterServerImportErrors(t *testing.T) {
 		records := make(chan *integration.Record, 4)
 		results := make(chan *integration.Result, 4)
 		done := make(chan error, 1)
-		go func() { done <- imp.Import(ctx, records, results) }()
+		go func() { _, err := imp.Import(ctx, records, results); done <- err }()
 		for range records {
 		}
 		close(results)
