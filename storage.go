@@ -60,8 +60,8 @@ type Range struct {
 
 type StorageResourceEntry struct {
 	MAC   MAC
-	Size  int64     // -1 if unknown
-	MTime time.Time // zero if not known
+	Size  int64 // 0 if unknown
+	MTime time.Time
 }
 
 type Store interface {
