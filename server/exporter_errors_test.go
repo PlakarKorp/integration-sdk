@@ -51,7 +51,7 @@ type holdingExporter struct {
 	fail chan error
 }
 
-func (h *holdingExporter) Export(_ context.Context, records <-chan *integration.Record, results chan<- *integration.Result) error {
+func (h *holdingExporter) Export(_ context.Context, _ map[string]string, records <-chan *integration.Record, results chan<- *integration.Result) error {
 	defer close(results)
 	h.got <- <-records
 	return <-h.fail

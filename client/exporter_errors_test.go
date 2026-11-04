@@ -75,7 +75,7 @@ func TestExporter_PingCloseFlags(t *testing.T) {
 func TestExporter_ExportStreamFailure(t *testing.T) {
 	boom := errors.New("boom")
 	g := &Exporter{client: proto.NewExporterClient(failingConn{boom})}
-	err := g.Export(t.Context(), recordsOf[integration.Record](), make(chan *integration.Result))
+	err := g.Export(t.Context(), nil, recordsOf[integration.Record](), make(chan *integration.Result))
 	require.ErrorIs(t, err, boom)
 }
 
