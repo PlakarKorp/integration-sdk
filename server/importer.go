@@ -141,15 +141,29 @@ func (plugin *importerPluginServer) Import(stream grpc.BidiStreamingServer[proto
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
 
-	wg.Go(func() error {
-		return plugin.sendRecords(stream, records)
-	})
+	sent := make(chan error, 1)
+	go func() {
+		sent <- plugin.sendRecords(stream, records)
+	}()
 
 	wg.Go(func() error {
 		return plugin.receiveResults(stream, results)
 	})
 
-	if err := imp.Import(ctx, records, results); err != nil {
+	meta, err := imp.Import(ctx, records, results)
+	if err != nil {
+		return err
+	}
+
+	if err := <-sent; err != nil {
+		return err
+	}
+
+	// The importer may wait for the acks before giving out its
+	// metadata, and the client only stops acking after Finished:
+	// so the metadata goes in a trailer of its own.
+	trailer := &proto.ImportTrailer{Meta: meta}
+	if err := stream.Send(&proto.ImportResponse{Trailer: trailer}); err != nil {
 		return err
 	}
 

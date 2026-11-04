@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"github.com/PlakarKorp/integration-sdk"
 	conn "github.com/PlakarKorp/integration-sdk/proto"
 	proto "github.com/PlakarKorp/integration-sdk/proto/exporter"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -82,6 +82,12 @@ type fakeExporter struct {
 
 	// ids collects every entry id the server saw, in arrival order.
 	ids []uint64
+
+	// hasExportHeader advertises the export header in Init.
+	hasExportHeader bool
+
+	// meta is what the export header carried.
+	meta map[string]string
 }
 
 // join moves a record into received once both its entry and its
@@ -189,7 +195,7 @@ type receivedFile struct {
 }
 
 func (f *fakeExporter) Init(ctx context.Context, req *proto.InitRequest) (*proto.InitResponse, error) {
-	return &proto.InitResponse{Origin: "o", Type: "t", Root: "/", Flags: 0, HasPutData: f.hasPutData}, nil
+	return &proto.InitResponse{Origin: "o", Type: "t", Root: "/", Flags: 0, HasPutData: f.hasPutData, HasExportHeader: f.hasExportHeader}, nil
 }
 func (f *fakeExporter) Ping(ctx context.Context, _ *proto.PingRequest) (*proto.PingResponse, error) {
 	return &proto.PingResponse{}, nil
@@ -232,6 +238,7 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 		buf.Reset()
 	}
 
+	first := true
 	for {
 		req, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -242,6 +249,13 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 		}
 
 		switch p := req.Packet.(type) {
+		case *proto.ExportRequest_Header:
+			if !first {
+				return status.Error(codes.InvalidArgument, "header after the records")
+			}
+			f.mu.Lock()
+			f.meta = p.Header.Meta
+			f.mu.Unlock()
 		case *proto.ExportRequest_Record:
 			if current != nil {
 				flush()
@@ -274,6 +288,8 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 			}
 		}
 
+		first = false
+
 		// echo back a result for each completed file, draining the
 		// `pending` list (if any was supplied).
 		f.mu.Lock()
@@ -299,9 +315,9 @@ func (f *fakeExporter) Export(stream grpc.BidiStreamingServer[proto.ExportReques
 
 // runExport is basically a no-op kloset restore: it feeds n records into the
 // channel from a producer goroutine and consumes the results, returning the
-// error Export() reported. producerDone reports whether the producer managed
+// error Export() reported for the given metadata. producerDone reports whether the producer managed
 // to finish; a false means it was left blocked on an undrained channel.
-func runExport(t *testing.T, exp *Exporter, n int) (err error, producerFinished bool) {
+func runExport(t *testing.T, exp *Exporter, meta map[string]string, n int) (err error, producerFinished bool) {
 	t.Helper()
 
 	records := make(chan *integration.Record, 1)
@@ -324,7 +340,7 @@ func runExport(t *testing.T, exp *Exporter, n int) (err error, producerFinished 
 	}()
 
 	errCh := make(chan error, 1)
-	go func() { errCh <- exp.Export(t.Context(), records, results) }()
+	go func() { errCh <- exp.Export(t.Context(), meta, records, results) }()
 
 	select {
 	case err = <-errCh:
@@ -436,7 +452,7 @@ func TestExporter_SendsRecordAndChunks(t *testing.T) {
 	close(records)
 
 	done := make(chan error, 1)
-	go func() { done <- exp.Export(context.Background(), records, results) }()
+	go func() { done <- exp.Export(context.Background(), nil, records, results) }()
 
 	// Drain results.
 	gotResult := false
@@ -481,7 +497,7 @@ func TestExporter_DirectoryRecordSkipsChunks(t *testing.T) {
 	close(records)
 
 	done := make(chan error, 1)
-	go func() { done <- exp.Export(context.Background(), records, results) }()
+	go func() { done <- exp.Export(context.Background(), nil, records, results) }()
 
 	for range results {
 	}
@@ -498,7 +514,7 @@ func TestExporter_ExportErrorIsReported(t *testing.T) {
 		earlyExportErr: errors.New("simulated export tool failure"),
 	})
 
-	err, _ := runExport(t, exp, 50)
+	err, _ := runExport(t, exp, nil, 50)
 
 	require.Error(t, err)
 	require.NotErrorIs(t, err, io.EOF, "a bare io.EOF from the send path, want the plugin's error")
@@ -510,7 +526,7 @@ func TestExporter_ExportErrorDrainsRecords(t *testing.T) {
 		earlyExportErr: errors.New("simulated export tool failure"),
 	})
 
-	_, producerFinished := runExport(t, exp, 50)
+	_, producerFinished := runExport(t, exp, nil, 50)
 
 	require.True(t, producerFinished, "the producer is still blocked writing to records: the channel was not drained")
 }
@@ -520,7 +536,7 @@ func TestExporter_ExportCanceledIsUnwrapped(t *testing.T) {
 		earlyExportErr: status.Error(codes.Canceled, "ctx"),
 	})
 
-	err, _ := runExport(t, exp, 50)
+	err, _ := runExport(t, exp, nil, 50)
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -530,7 +546,7 @@ func TestExporter_ExportUnavailableIsUnwrapped(t *testing.T) {
 		earlyExportErr: status.Error(codes.Unavailable, "down"),
 	})
 
-	err, _ := runExport(t, exp, 50)
+	err, _ := runExport(t, exp, nil, 50)
 
 	require.ErrorContains(t, err, "I/O error")
 }
@@ -538,7 +554,7 @@ func TestExporter_ExportUnavailableIsUnwrapped(t *testing.T) {
 func TestExporter_NilResultIsRejected(t *testing.T) {
 	exp := dialFailing(t, &fakeExporter{sendNilResult: true})
 
-	err, producerFinished := runExport(t, exp, 5)
+	err, producerFinished := runExport(t, exp, nil, 5)
 
 	require.ErrorContains(t, err, "expected a result")
 	require.True(t, producerFinished, "the producer is still blocked writing to records")
@@ -547,7 +563,7 @@ func TestExporter_NilResultIsRejected(t *testing.T) {
 func TestExporter_ExportSucceeds(t *testing.T) {
 	exp := dialFailing(t, &fakeExporter{})
 
-	err, producerFinished := runExport(t, exp, 5)
+	err, producerFinished := runExport(t, exp, nil, 5)
 
 	require.NoError(t, err)
 	require.True(t, producerFinished, "the producer is still blocked writing to records")
@@ -648,7 +664,7 @@ func exportRecords(t *testing.T, exp *Exporter, recs ...*integration.Record) err
 
 	results := make(chan *integration.Result, len(recs)+1)
 	done := make(chan error, 1)
-	go func() { done <- exp.Export(t.Context(), records, results) }()
+	go func() { done <- exp.Export(t.Context(), nil, records, results) }()
 
 	for range results {
 	}
@@ -876,7 +892,7 @@ func TestExporter_AbandonedRecordsAreClosed(t *testing.T) {
 
 			results := make(chan *integration.Result, count+1)
 			done := make(chan error, 1)
-			go func() { done <- exp.Export(t.Context(), records, results) }()
+			go func() { done <- exp.Export(t.Context(), nil, records, results) }()
 
 			for range results {
 			}
@@ -919,7 +935,7 @@ func TestExporter_PayloadIdsAreUniqueAcrossExports(t *testing.T) {
 
 			results := make(chan *integration.Result, perCall+1)
 			done := make(chan error, 1)
-			go func() { done <- exp.Export(t.Context(), records, results) }()
+			go func() { done <- exp.Export(t.Context(), nil, records, results) }()
 			for range results {
 			}
 			errs <- <-done
@@ -959,4 +975,42 @@ func TestExporter_ExportErrorCancelsUploads(t *testing.T) {
 	big := bytes.Repeat([]byte("x"), inlineThreshold*3)
 	err := exportRecords(t, exp, recordOf("big", big, nil))
 	require.ErrorContains(t, err, sentinel.Error())
+}
+
+func TestExporter_ExportMeta(t *testing.T) {
+	meta := map[string]string{"snapshot": "abcd", "note": "héllo"}
+
+	for _, tc := range []struct {
+		name       string
+		hasPutData bool
+		hasHeader  bool
+		meta       map[string]string
+		wantMeta   map[string]string
+	}{
+		{"records", false, true, meta, meta},
+		{"entries", true, true, meta, meta},
+		{"no metadata", true, true, nil, nil},
+		{"old server without metadata", true, false, nil, nil},
+		{"old server drops the metadata", true, false, meta, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newEntryServer()
+			srv.hasPutData = tc.hasPutData
+			srv.hasExportHeader = tc.hasHeader
+			conn, cleanup := dialExporter(t, srv)
+			t.Cleanup(cleanup)
+
+			exp, err := NewExporter(t.Context(), conn, &integration.Options{}, "p", nil)
+			require.NoError(t, err)
+
+			err, producerFinished := runExport(t, exp.(*Exporter), tc.meta, 5)
+			require.NoError(t, err)
+			require.True(t, producerFinished, "producer left blocked on records")
+
+			srv.mu.Lock()
+			defer srv.mu.Unlock()
+			require.Equal(t, tc.wantMeta, srv.meta)
+			require.Len(t, srv.received, 5)
+		})
+	}
 }

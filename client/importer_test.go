@@ -43,6 +43,10 @@ type fakeImporter struct {
 	earlyImportErr error
 	importErr      error
 
+	// meta, when set, is sent in a trailer once the acks are in, the
+	// way the importer server does.
+	meta map[string]string
+
 	// captured Acks from the client
 	acks    []*conn.Result
 	ackDone chan struct{} // closed when Import returns server-side
@@ -98,6 +102,12 @@ func (f *fakeImporter) Import(stream grpc.BidiStreamingServer[proto.ImportReques
 		}
 	}
 
+	if f.meta != nil {
+		if err := stream.Send(&proto.ImportResponse{Trailer: &proto.ImportTrailer{Meta: f.meta}}); err != nil {
+			return err
+		}
+	}
+
 	return f.importErr
 }
 
@@ -119,8 +129,8 @@ func (f *fakeImporter) Open(req *proto.OpenRequest, stream grpc.ServerStreamingS
 // ---------------------------------------------------------------------------
 
 // runImport is basically a no-op kloset's snapshot.Builder.importSource.
-// It consumes and acks records, returns seen records and error
-func runImport(t *testing.T, imp *Importer) (error, []*integration.Record) {
+// It consumes and acks records, returns the metadata, error and seen records.
+func runImport(t *testing.T, imp *Importer) (map[string]string, error, []*integration.Record) {
 	t.Helper()
 
 	records := make(chan *integration.Record, 4)
@@ -138,7 +148,12 @@ func runImport(t *testing.T, imp *Importer) (error, []*integration.Record) {
 	}()
 
 	importDone := make(chan error, 1)
-	go func() { importDone <- imp.Import(t.Context(), records, results) }()
+	var meta map[string]string
+	go func() {
+		m, err := imp.Import(t.Context(), records, results)
+		meta = m
+		importDone <- err
+	}()
 
 	var err error
 	select {
@@ -153,7 +168,7 @@ func runImport(t *testing.T, imp *Importer) (error, []*integration.Record) {
 		require.Fail(t, "timeout waiting for the record consumer to exit")
 	}
 
-	return err, seen
+	return meta, err, seen
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +280,10 @@ func TestImporter_ImportStreamsRecordsAndAcks(t *testing.T) {
 	results := make(chan *integration.Result, 4)
 
 	importDone := make(chan error, 1)
-	go func() { importDone <- imp.Import(context.Background(), records, results) }()
+	go func() {
+		_, err := imp.Import(context.Background(), records, results)
+		importDone <- err
+	}()
 
 	var got *integration.Record
 	select {
@@ -329,7 +347,7 @@ func TestImporter_EarlyImportErrorAfterFinishedIsReported(t *testing.T) {
 	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	earlyImportErr, seen := runImport(t, imp.(*Importer))
+	_, earlyImportErr, seen := runImport(t, imp.(*Importer))
 
 	require.Empty(t, seen)
 	require.ErrorContains(t, earlyImportErr, "simulated backup tool failure")
@@ -352,7 +370,7 @@ func TestImporter_EarlyImportErrorAfterRecordsIsReported(t *testing.T) {
 	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	earlyImportErr, seen := runImport(t, imp.(*Importer))
+	_, earlyImportErr, seen := runImport(t, imp.(*Importer))
 
 	require.Len(t, seen, 1, "expected the record emitted before the failure")
 	require.Equal(t, "/a.txt", seen[0].Pathname)
@@ -376,7 +394,7 @@ func TestImporter_ImportErrorAfterRecordsIsReported(t *testing.T) {
 	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	ImportErr, seen := runImport(t, imp.(*Importer))
+	_, ImportErr, seen := runImport(t, imp.(*Importer))
 
 	require.Len(t, seen, 1, "expected the record emitted before the failure")
 	require.Equal(t, "/a.txt", seen[0].Pathname)
@@ -394,7 +412,7 @@ func TestImporter_EarlyImportCanceledIsUnwrapped(t *testing.T) {
 	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	earlyImportErr, _ := runImport(t, imp.(*Importer))
+	_, earlyImportErr, _ := runImport(t, imp.(*Importer))
 
 	require.ErrorIs(t, earlyImportErr, context.Canceled)
 }
@@ -415,8 +433,42 @@ func TestImporter_EarlyImportSucceedsAfterFinished(t *testing.T) {
 	imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
 	require.NoError(t, err)
 
-	earlyImportErr, seen := runImport(t, imp.(*Importer))
+	_, earlyImportErr, seen := runImport(t, imp.(*Importer))
 
 	require.NoError(t, earlyImportErr)
 	require.Len(t, seen, 1)
+}
+
+func TestImporter_ImportMeta(t *testing.T) {
+	rec := &integration.Record{
+		Pathname: "/a.txt",
+		FileInfo: integration.FileInfo{Lname: "a.txt", Lsize: 5, Lmode: 0o644},
+	}
+	meta := map[string]string{"snapshot": "abcd"}
+
+	for _, tc := range []struct {
+		name string
+		meta map[string]string
+	}{
+		{"metadata", meta},
+		{"old server", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := &fakeImporter{
+				initResp: &proto.InitResponse{Type: "t", Root: "/"},
+				records:  []*conn.Record{conn.RecordToProto(rec)},
+				meta:     tc.meta,
+			}
+			conn, cleanup := dialImporter(t, srv)
+			t.Cleanup(cleanup)
+
+			imp, err := NewImporter(t.Context(), conn, &integration.Options{}, "p", nil)
+			require.NoError(t, err)
+
+			got, err, seen := runImport(t, imp.(*Importer))
+			require.NoError(t, err)
+			require.Len(t, seen, 1)
+			require.Equal(t, tc.meta, got)
+		})
+	}
 }

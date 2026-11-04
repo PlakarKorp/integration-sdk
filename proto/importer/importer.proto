@@ -49,6 +49,14 @@ message ImportResponse {
   // signals that the importer is done sending records, will just wait
   // for the acknowledgments.  result will be ignored if this is set.
   bool finished = 2;
+
+  // sent once, after finished, when the importer has returned.
+  ImportTrailer trailer = 3;
+}
+
+message ImportTrailer {
+  // metadata outputted by the importer.
+  map<string, string> meta = 1;
 }
 
 message OpenRequest {
