@@ -32,8 +32,8 @@ func (s *unreachedStore) Mode(context.Context) (integration.Mode, error) { retur
 func (s *unreachedStore) Size(context.Context) (int64, error)            { return 0, nil }
 func (s *unreachedStore) Close(context.Context) error                    { return nil }
 
-func (s *unreachedStore) List(context.Context, integration.StorageResource, integration.StorageFlag) iter.Seq2[integration.Resource, error] {
-	return func(func(integration.Resource, error) bool) {}
+func (s *unreachedStore) List(context.Context, integration.StorageResource, integration.StorageFlag) iter.Seq2[*integration.StorageResourceEntry, error] {
+	return func(func(*integration.StorageResourceEntry, error) bool) {}
 }
 
 func (s *unreachedStore) Put(context.Context, integration.StorageResource, integration.StorageFlag, integration.MAC, io.Reader) (int64, error) {

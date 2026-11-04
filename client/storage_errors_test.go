@@ -174,9 +174,9 @@ func TestStore_ListStream(t *testing.T) {
 	ctx := t.Context()
 	now := time.Unix(1234, 0).UTC()
 
-	collect := func(t *testing.T, store integration.Store, stopAfter int) ([]integration.Resource, error) {
+	collect := func(t *testing.T, store integration.Store, stopAfter int) ([]*integration.StorageResourceEntry, error) {
 		t.Helper()
-		var got []integration.Resource
+		var got []*integration.StorageResourceEntry
 		for res, err := range store.List(ctx, integration.StorageResourcePackfile, 0) {
 			if err != nil {
 				return got, err
@@ -253,7 +253,7 @@ func TestStore_ListStream(t *testing.T) {
 		})
 		got, err := collect(t, store, 0)
 		require.NoError(t, err)
-		require.Equal(t, []integration.Resource{{MAC: integration.MAC(fullMAC(1))}, {MAC: integration.MAC(fullMAC(2))}}, got)
+		require.Equal(t, []*integration.StorageResourceEntry{{MAC: integration.MAC(fullMAC(1))}, {MAC: integration.MAC(fullMAC(2))}}, got)
 
 		got, err = collect(t, store, 1)
 		require.NoError(t, err)
