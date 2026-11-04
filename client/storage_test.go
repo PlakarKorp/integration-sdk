@@ -192,7 +192,7 @@ func TestStore_List_RoundTripsMacs(t *testing.T) {
 	for got, err := range s.List(context.Background(), integration.StorageResourcePackfile, 0) {
 		count++
 		require.NoError(t, err)
-		require.Equal(t, integration.StorageResourceEntry{MAC: integration.MAC(full)}, got)
+		require.Equal(t, &integration.StorageResourceEntry{MAC: integration.MAC(full)}, got)
 	}
 	require.Equal(t, 1, count)
 }

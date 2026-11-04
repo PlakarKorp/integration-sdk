@@ -43,7 +43,7 @@ type fakeStore struct {
 	errs map[string]error
 
 	config    []byte
-	resources []integration.Resource
+	resources []*integration.StorageResourceEntry
 	data      []byte
 
 	put      []byte
@@ -80,15 +80,15 @@ func (f *fakeStore) Size(context.Context) (int64, error) {
 	return int64(len(f.data)), f.errs["Size"]
 }
 
-func (f *fakeStore) List(context.Context, integration.StorageResource, integration.StorageFlag) iter.Seq2[integration.Resource, error] {
-	return func(yield func(integration.Resource, error) bool) {
+func (f *fakeStore) List(context.Context, integration.StorageResource, integration.StorageFlag) iter.Seq2[*integration.StorageResourceEntry, error] {
+	return func(yield func(*integration.StorageResourceEntry, error) bool) {
 		for _, res := range f.resources {
 			if !yield(res, nil) {
 				return
 			}
 		}
 		if err := f.errs["List"]; err != nil {
-			yield(integration.Resource{}, err)
+			yield(nil, err)
 		}
 	}
 }
@@ -151,7 +151,7 @@ func TestStorageServerRoundTrip(t *testing.T) {
 	ctx := t.Context()
 	fake := &fakeStore{
 		data: []byte("payload"),
-		resources: []integration.Resource{
+		resources: []*integration.StorageResourceEntry{
 			{MAC: integration.MAC{1}, Size: 7, MTime: time.Unix(10, 0).UTC()},
 			{MAC: integration.MAC{2}, Size: -1},
 		},
@@ -186,7 +186,7 @@ func TestStorageServerRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(7), size)
 
-	var listed []integration.Resource
+	var listed []*integration.StorageResourceEntry
 	for res, err := range store.List(ctx, integration.StorageResourcePackfile, integration.StorageHot) {
 		require.NoError(t, err)
 		listed = append(listed, res)
@@ -314,7 +314,7 @@ func TestStorageServerUninitialized(t *testing.T) {
 // The legacy List, which the client only falls back to, still answers.
 func TestStorageServerLegacyList(t *testing.T) {
 	ctx := t.Context()
-	fake := &fakeStore{resources: []integration.Resource{{MAC: integration.MAC{1}}, {MAC: integration.MAC{2}}}}
+	fake := &fakeStore{resources: []*integration.StorageResourceEntry{{MAC: integration.MAC{1}}, {MAC: integration.MAC{2}}}}
 	raw := storagepb.NewStoreClient(dialStorage(t, returning(fake)))
 
 	_, err := raw.Init(ctx, &storagepb.InitRequest{})
@@ -336,7 +336,7 @@ func TestStorageServerListStreamBatches(t *testing.T) {
 	ctx := t.Context()
 	fake := &fakeStore{}
 	for i := range 1024 + 1 {
-		fake.resources = append(fake.resources, integration.Resource{MAC: integration.MAC{byte(i), byte(i >> 8)}})
+		fake.resources = append(fake.resources, &integration.StorageResourceEntry{MAC: integration.MAC{byte(i), byte(i >> 8)}})
 	}
 	store, err := client.NewStorage(ctx, dialStorage(t, returning(fake)), "p", nil)
 	require.NoError(t, err)
@@ -356,7 +356,7 @@ func TestStorageServerStreamFailures(t *testing.T) {
 	t.Run("ListStream flush", func(t *testing.T) {
 		fake := &fakeStore{}
 		for range 1024 {
-			fake.resources = append(fake.resources, integration.Resource{})
+			fake.resources = append(fake.resources, &integration.StorageResourceEntry{})
 		}
 		plugin := newStoragePlugin(t, fake)
 		stream := &fakeStream[storagepb.ListRequest, storagepb.ListStreamResponse]{
@@ -376,7 +376,8 @@ func TestStorageServerStreamFailures(t *testing.T) {
 	})
 
 	t.Run("ListStream tail", func(t *testing.T) {
-		plugin := newStoragePlugin(t, &fakeStore{resources: []integration.Resource{{}}})
+		plugin := newStoragePlugin(t, &fakeStore{resources: []*integration.StorageResourceEntry{{}}})
+
 		stream := &fakeStream[storagepb.ListRequest, storagepb.ListStreamResponse]{
 			ctx:  t.Context(),
 			send: func(*storagepb.ListStreamResponse) error { return boom },

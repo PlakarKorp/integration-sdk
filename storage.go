@@ -76,7 +76,7 @@ type Store interface {
 
 	Mode(context.Context) (Mode, error)
 	Size(context.Context) (int64, error) // this can be costly, call with caution // XXX remove?
-	List(context.Context, StorageResource, StorageFlag) iter.Seq2[StorageResourceEntry, error]
+	List(context.Context, StorageResource, StorageFlag) iter.Seq2[*StorageResourceEntry, error]
 	Put(context.Context, StorageResource, StorageFlag, MAC, io.Reader) (int64, error)
 	Get(context.Context, StorageResource, StorageFlag, MAC, *Range) (io.ReadCloser, error)
 	Delete(context.Context, StorageResource, StorageFlag, MAC) error
