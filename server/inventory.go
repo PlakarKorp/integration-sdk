@@ -32,12 +32,7 @@ func (g *grpcInventoryServer) Init(ctx context.Context, req *inventory.InitReque
 	return &inventory.InitResponse{}, nil
 }
 
-func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.ServerStreamingServer[inventory.ListResponse]) error {
-	inv, err := g.instance.get()
-	if err != nil {
-		return err
-	}
-
+func (g *grpcInventoryServer) consume(inv integration.Inventory, stream grpc.ServerStreamingServer[inventory.ListResponse]) error {
 	entries := make(chan *integration.InventoryEntry, g.maxconcurrency)
 	ctx, cancel := context.WithCancelCause(stream.Context())
 	defer cancel(nil) // needed?
@@ -81,7 +76,7 @@ func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.Serve
 		return nil
 	})
 
-	err = inv.List(ctx, entries)
+	err := inv.List(ctx, entries)
 	wgerr := wg.Wait()
 
 	if err != nil {
@@ -94,16 +89,46 @@ func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.Serve
 	return nil
 }
 
+func (g *grpcInventoryServer) List(req *inventory.ListRequest, stream grpc.ServerStreamingServer[inventory.ListResponse]) error {
+	inv, err := g.instance.get()
+	if err != nil {
+		return err
+	}
+
+	return g.consume(inv, stream)
+}
+
 func (g *grpcInventoryServer) Close(ctx context.Context, _ *inventory.CloseRequest) (*inventory.CloseResponse, error) {
 	inv, err := g.instance.take()
 	if err != nil {
-		return nil, err
+		// ignore Close being called on an object not
+		// initialized.  in the new world, we're using
+		// StatelessList anyway, so this is kept just for a
+		// bit for backward compatibility.
+		return nil, nil
 	}
 
 	if err := inv.Close(ctx); err != nil {
 		return nil, err
 	}
 	return &inventory.CloseResponse{}, nil
+}
+
+func (g *grpcInventoryServer) StatelessList(req *inventory.StatelessListRequest, stream grpc.ServerStreamingServer[inventory.ListResponse]) error {
+	if _, err := g.instance.get(); err == nil {
+		return fmt.Errorf("Init was called; so why StatelessList?")
+	}
+
+	inv, err := g.constructor(stream.Context(), req.Config)
+	if err != nil {
+		return err
+	}
+
+	ret := g.consume(inv, stream)
+	if err := inv.Close(stream.Context()); err != nil {
+		ret = errors.Join(ret, err)
+	}
+	return ret
 }
 
 func RunInventory(constructor InventoryFn) error {
