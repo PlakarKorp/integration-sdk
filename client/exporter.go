@@ -78,10 +78,7 @@ func drain(records <-chan *integration.Record) {
 }
 
 func NewExporter(ctx context.Context, client grpc.ClientConnInterface, opts *integration.Options, p string, config map[string]string) (integration.Exporter, error) {
-	maxConcurrency := opts.MaxConcurrency
-	if maxConcurrency < 1 {
-		maxConcurrency = 1
-	}
+	maxConcurrency := max(opts.MaxConcurrency, 1)
 
 	exporter := &Exporter{
 		client:         proto.NewExporterClient(client),
@@ -411,6 +408,8 @@ func (g *Exporter) receiveResults(stream grpc.BidiStreamingClient[proto.ExportRe
 }
 
 func (g *Exporter) Export(ctx context.Context, meta map[string]string, records <-chan *integration.Record, results chan<- *integration.Result) error {
+	wg, ctx := errgroup.WithContext(ctx)
+
 	stream, err := g.client.Export(ctx)
 	if err != nil {
 		return unwrap(err)
@@ -427,8 +426,6 @@ func (g *Exporter) Export(ctx context.Context, meta map[string]string, records <
 			return unwrap(err)
 		}
 	}
-
-	wg, ctx := errgroup.WithContext(ctx)
 
 	wg.Go(func() error {
 		if g.hasPutData {
