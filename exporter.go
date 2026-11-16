@@ -38,3 +38,7 @@ func UnregisterExporter(name string) error {
 func ExporterBackends() []string {
 	return exporterBackends.Names()
 }
+
+func LookupExporter(loc string) (string, string, ExporterFn, location.Flags, bool) {
+	return exporterBackends.Lookup(loc)
+}

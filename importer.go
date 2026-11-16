@@ -38,3 +38,7 @@ func UnregisterImporter(name string) error {
 func ImporterBackends() []string {
 	return importerBackends.Names()
 }
+
+func LookupImporter(loc string) (string, string, ImporterFn, location.Flags, bool) {
+	return importerBackends.Lookup(loc)
+}
