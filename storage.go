@@ -105,3 +105,7 @@ func UnregisterStore(name string) error {
 func StoreBackends() []string {
 	return storeBackends.Names()
 }
+
+func LookupStore(loc string) (string, string, StoreFn, location.Flags, bool) {
+	return storeBackends.Lookup(loc)
+}
