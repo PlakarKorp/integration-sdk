@@ -14,6 +14,10 @@ type Options struct {
 	Excludes        []string
 	NoXattr         bool
 
+	// For PITR mode, this holds the metadata emitted by the
+	// previous run of the importer.
+	Context map[string]string
+
 	Stdin  io.Reader `msgpack:"-"`
 	Stdout io.Writer `msgpack:"-"`
 	Stderr io.Writer `msgpack:"-"`
