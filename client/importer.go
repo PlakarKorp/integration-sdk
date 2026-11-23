@@ -115,6 +115,7 @@ func (g *Importer) open(parentctx context.Context, record *integration.Record) (
 
 	stream, err := g.client.Open(ctx, &proto.OpenRequest{
 		Record: &conn.Record{
+			Id:        record.ID,
 			Pathname:  record.Pathname,
 			IsXattr:   record.IsXattr,
 			XattrName: record.XattrName,

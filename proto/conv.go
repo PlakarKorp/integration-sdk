@@ -54,6 +54,7 @@ func RecordToProto(record *integration.Record) *Record {
 		FileInfo:           finfo,
 		ExtendedAttributes: record.ExtendedAttributes,
 		FileAttributes:     record.FileAttributes,
+		Id:                 record.ID,
 	}
 }
 
@@ -94,6 +95,7 @@ func RecordFromProto(record *Record) (*integration.Record, error) {
 	}
 
 	return &integration.Record{
+		ID:                 record.Id,
 		Pathname:           record.Pathname,
 		Err:                err,
 		IsXattr:            record.IsXattr,
