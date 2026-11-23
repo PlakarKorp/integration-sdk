@@ -20,6 +20,7 @@ message Options {
   int64 maxconcurrency = 5;
   repeated string excludes = 6;
   bool noxattr = 7;
+  map<string, string> context = 8;
 }
 
 message InitRequest {

@@ -31,6 +31,7 @@ type Options struct {
 	Maxconcurrency int64                  `protobuf:"varint,5,opt,name=maxconcurrency,proto3" json:"maxconcurrency,omitempty"`
 	Excludes       []string               `protobuf:"bytes,6,rep,name=excludes,proto3" json:"excludes,omitempty"`
 	Noxattr        bool                   `protobuf:"varint,7,opt,name=noxattr,proto3" json:"noxattr,omitempty"`
+	Context        map[string]string      `protobuf:"bytes,8,rep,name=context,proto3" json:"context,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -112,6 +113,13 @@ func (x *Options) GetNoxattr() bool {
 		return x.Noxattr
 	}
 	return false
+}
+
+func (x *Options) GetContext() map[string]string {
+	if x != nil {
+		return x.Context
+	}
+	return nil
 }
 
 type InitRequest struct {
@@ -630,7 +638,7 @@ var File_importer_proto protoreflect.FileDescriptor
 
 const file_importer_proto_rawDesc = "" +
 	"\n" +
-	"\x0eimporter.proto\x12\bimporter\x1a\x10connectors.proto\"\xb9\x01\n" +
+	"\x0eimporter.proto\x12\bimporter\x1a\x10connectors.proto\"\xaf\x02\n" +
 	"\aOptions\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12\x12\n" +
@@ -638,7 +646,11 @@ const file_importer_proto_rawDesc = "" +
 	"\x03cwd\x18\x04 \x01(\tR\x03cwd\x12&\n" +
 	"\x0emaxconcurrency\x18\x05 \x01(\x03R\x0emaxconcurrency\x12\x1a\n" +
 	"\bexcludes\x18\x06 \x03(\tR\bexcludes\x12\x18\n" +
-	"\anoxattr\x18\a \x01(\bR\anoxattr\"\xc6\x01\n" +
+	"\anoxattr\x18\a \x01(\bR\anoxattr\x128\n" +
+	"\acontext\x18\b \x03(\v2\x1e.importer.Options.ContextEntryR\acontext\x1a:\n" +
+	"\fContextEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x01\n" +
 	"\vInitRequest\x12+\n" +
 	"\aoptions\x18\x01 \x01(\v2\x11.importer.OptionsR\aoptions\x12\x14\n" +
 	"\x05proto\x18\x02 \x01(\tR\x05proto\x129\n" +
@@ -689,7 +701,7 @@ func file_importer_proto_rawDescGZIP() []byte {
 	return file_importer_proto_rawDescData
 }
 
-var file_importer_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_importer_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_importer_proto_goTypes = []any{
 	(*Options)(nil),        // 0: importer.Options
 	(*InitRequest)(nil),    // 1: importer.InitRequest
@@ -703,34 +715,36 @@ var file_importer_proto_goTypes = []any{
 	(*OpenResponse)(nil),   // 9: importer.OpenResponse
 	(*CloseRequest)(nil),   // 10: importer.CloseRequest
 	(*CloseResponse)(nil),  // 11: importer.CloseResponse
-	nil,                    // 12: importer.InitRequest.ConfigEntry
-	nil,                    // 13: importer.ImportTrailer.MetaEntry
-	(*proto.Result)(nil),   // 14: plakar.connectors.Result
-	(*proto.Record)(nil),   // 15: plakar.connectors.Record
+	nil,                    // 12: importer.Options.ContextEntry
+	nil,                    // 13: importer.InitRequest.ConfigEntry
+	nil,                    // 14: importer.ImportTrailer.MetaEntry
+	(*proto.Result)(nil),   // 15: plakar.connectors.Result
+	(*proto.Record)(nil),   // 16: plakar.connectors.Record
 }
 var file_importer_proto_depIdxs = []int32{
-	0,  // 0: importer.InitRequest.options:type_name -> importer.Options
-	12, // 1: importer.InitRequest.config:type_name -> importer.InitRequest.ConfigEntry
-	14, // 2: importer.ImportRequest.result:type_name -> plakar.connectors.Result
-	15, // 3: importer.ImportResponse.record:type_name -> plakar.connectors.Record
-	7,  // 4: importer.ImportResponse.trailer:type_name -> importer.ImportTrailer
-	13, // 5: importer.ImportTrailer.meta:type_name -> importer.ImportTrailer.MetaEntry
-	15, // 6: importer.OpenRequest.record:type_name -> plakar.connectors.Record
-	1,  // 7: importer.Importer.Init:input_type -> importer.InitRequest
-	3,  // 8: importer.Importer.Ping:input_type -> importer.PingRequest
-	5,  // 9: importer.Importer.Import:input_type -> importer.ImportRequest
-	8,  // 10: importer.Importer.Open:input_type -> importer.OpenRequest
-	10, // 11: importer.Importer.Close:input_type -> importer.CloseRequest
-	2,  // 12: importer.Importer.Init:output_type -> importer.InitResponse
-	4,  // 13: importer.Importer.Ping:output_type -> importer.PingResponse
-	6,  // 14: importer.Importer.Import:output_type -> importer.ImportResponse
-	9,  // 15: importer.Importer.Open:output_type -> importer.OpenResponse
-	11, // 16: importer.Importer.Close:output_type -> importer.CloseResponse
-	12, // [12:17] is the sub-list for method output_type
-	7,  // [7:12] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	12, // 0: importer.Options.context:type_name -> importer.Options.ContextEntry
+	0,  // 1: importer.InitRequest.options:type_name -> importer.Options
+	13, // 2: importer.InitRequest.config:type_name -> importer.InitRequest.ConfigEntry
+	15, // 3: importer.ImportRequest.result:type_name -> plakar.connectors.Result
+	16, // 4: importer.ImportResponse.record:type_name -> plakar.connectors.Record
+	7,  // 5: importer.ImportResponse.trailer:type_name -> importer.ImportTrailer
+	14, // 6: importer.ImportTrailer.meta:type_name -> importer.ImportTrailer.MetaEntry
+	16, // 7: importer.OpenRequest.record:type_name -> plakar.connectors.Record
+	1,  // 8: importer.Importer.Init:input_type -> importer.InitRequest
+	3,  // 9: importer.Importer.Ping:input_type -> importer.PingRequest
+	5,  // 10: importer.Importer.Import:input_type -> importer.ImportRequest
+	8,  // 11: importer.Importer.Open:input_type -> importer.OpenRequest
+	10, // 12: importer.Importer.Close:input_type -> importer.CloseRequest
+	2,  // 13: importer.Importer.Init:output_type -> importer.InitResponse
+	4,  // 14: importer.Importer.Ping:output_type -> importer.PingResponse
+	6,  // 15: importer.Importer.Import:output_type -> importer.ImportResponse
+	9,  // 16: importer.Importer.Open:output_type -> importer.OpenResponse
+	11, // 17: importer.Importer.Close:output_type -> importer.CloseResponse
+	13, // [13:18] is the sub-list for method output_type
+	8,  // [8:13] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_importer_proto_init() }
@@ -744,7 +758,7 @@ func file_importer_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_importer_proto_rawDesc), len(file_importer_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
