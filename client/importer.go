@@ -61,6 +61,7 @@ func NewImporter(ctx context.Context, client grpc.ClientConnInterface, opts *int
 			Maxconcurrency: int64(opts.MaxConcurrency),
 			Excludes:       opts.Excludes,
 			Noxattr:        opts.NoXattr,
+			Context:        opts.Context,
 		},
 		Proto:  p,
 		Config: config,

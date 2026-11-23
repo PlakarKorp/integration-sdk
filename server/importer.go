@@ -41,6 +41,7 @@ func (plugin *importerPluginServer) Init(ctx context.Context, req *proto.InitReq
 		MaxConcurrency:  max(1, int(req.Options.Maxconcurrency)),
 		Excludes:        req.Options.Excludes,
 		NoXattr:         req.Options.Noxattr,
+		Context:         req.Options.Context,
 	}
 
 	imp, err := plugin.instance.init(func() (integration.Importer, error) {
