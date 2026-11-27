@@ -13,6 +13,7 @@ gen: connectors.pb.go
 	${MAKE} -C inventory
 	${MAKE} -C secret
 	${MAKE} -C resolver
+	${MAKE} -C provisioner
 
 .PHONY: all build gen
 
