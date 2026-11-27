@@ -48,6 +48,7 @@ const (
 	ConnectorTypeStorage        ConnectorType = "storage"
 	ConnectorTypeSecretProvider ConnectorType = "secret_provider"
 	ConnectorTypeInventory      ConnectorType = "inventory"
+	ConnectorTypeProvisioner    ConnectorType = "provisioner"
 )
 
 var resourceClasses []ResourceClass = []ResourceClass{
@@ -94,6 +95,7 @@ var connectorTypes []ConnectorType = []ConnectorType{
 	ConnectorTypeStorage,
 	ConnectorTypeSecretProvider,
 	ConnectorTypeInventory,
+	ConnectorTypeProvisioner,
 }
 
 var resourceClassTree map[ResourceClass][]ResourceSubClass = map[ResourceClass][]ResourceSubClass{

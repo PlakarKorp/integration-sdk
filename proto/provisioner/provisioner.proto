@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+option go_package = "github.com/PlakarKorp/integration-sdk/proto/provisioner";
+
+package provisioner;
+
+// Provisioner creates a resource a snapshot can be restored into, and hands
+// back the target an exporter restores to.
+service Provisioner {
+  rpc Init(InitRequest) returns (InitResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Provision(ProvisionRequest) returns (ProvisionResponse);
+  rpc Finalize(FinalizeRequest) returns (FinalizeResponse);
+  rpc Deprovision(DeprovisionRequest) returns (DeprovisionResponse);
+  rpc Close(CloseRequest) returns (CloseResponse);
+}
+
+message InitRequest {
+  map<string, string> config = 1;
+}
+
+message InitResponse {}
+
+message PingRequest {}
+
+message PingResponse {}
+
+message ProvisionRequest {
+  // Labels the provisioner attaches to what it creates, as the provider
+  // allows: at least the job it was created for.
+  map<string, string> labels = 1;
+  // Params are what this one resource is made of, validated against the
+  // provisioner's parameters schema. The configuration given to Init is who
+  // creates it.
+  map<string, string> params = 2;
+}
+
+message ProvisionResponse {
+  // Handle names what was created, for Deprovision.
+  string handle = 1;
+  // Protocol is the exporter the target is for.
+  string protocol = 2;
+  // Target is the exporter's configuration, location included. It may hold
+  // credentials: it is for the restore, not for storage.
+  map<string, string> target = 3;
+}
+
+message FinalizeRequest {
+  // The handle Provision answered.
+  string handle = 1;
+  // The labels and params Provision was given.
+  map<string, string> labels = 2;
+  map<string, string> params = 3;
+}
+
+message FinalizeResponse {
+  // Handle replaces the one Provision answered, when what now exists is
+  // named differently. Empty keeps it.
+  string handle = 1;
+  // Location names what now exists, for display. Empty keeps the target's.
+  string location = 2;
+}
+
+message DeprovisionRequest {
+  string handle = 1;
+}
+
+message DeprovisionResponse {}
+
+message CloseRequest {}
+
+message CloseResponse {}
